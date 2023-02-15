@@ -20,7 +20,7 @@ bonu0 bonu1 bonu02 bonu3 end
 
 [Вступительная теория о списке состояния механизмов защиты ядра](#Preamble)
 
-| Пользователь           | Уязвимость | Инструмент | Пароль от level(xx+1)  |  
+| Пользователь           | Уязвимость | Инструмент | Пароль от следующего пользователя  |  
 | ---------------------- | ---------- | -----------| ----------------------:|
 | [level0](#lvl0)        |  | gdb |  1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a |
 | [level1](#lvl1)        |  |  |  |
@@ -37,8 +37,9 @@ bonu0 bonu1 bonu02 bonu3 end
 | [bonus2](#bonus2)      |  |  |  |
 | [bonus3](#bonus3)      |  |  |  |
 
-
-<a name="content"></a> 
+#
+###### [вернуться к содержанию](#content)
+<a name="Preamble"></a> 
 # Вступительная теория о списке состояния механизмов защиты ядра
 
 После запуска ВМ при входе в пользователя появляется сообщение:
@@ -83,7 +84,9 @@ GCC stack protector support, Strict user copy checks, Restrict /dev/mem access, 
 
 Еще кое-что для чтения о взломах
 [Переполнение буфера: анатомия эксплоита](https://www.securitylab.ru/analytics/421994.php)
-/
+
+<details> 
+  <summary> Некоторые рассуждения о прочитанном </summary>
 1. Можно в определенных ситуациях воспользоваться перезаписью данных в переменную (перезаписать данные за пределами переменной):
 ```sh
 Strict user copy checks:                Disabled
@@ -145,6 +148,7 @@ checksec --kernel
 
   The KERNHEAP hardening patchset is available here:
     https://www.subreption.com/kernheap/
+</details>
 
 #
 ###### [вернуться к содержанию](#content)
