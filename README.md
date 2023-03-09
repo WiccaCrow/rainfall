@@ -1,4 +1,4 @@
-<style>
+<!-- <style>
   .filePath {
   background: red;
   color: white;
@@ -9,7 +9,7 @@
   .on {
   color: green;
   }
-</style>
+</style> -->
 
 # Rainfall
 Проект по изучению методов взлома и поиску уязвимостей.
@@ -56,7 +56,7 @@ bonu0 bonu1 bonu02 bonu3 end
 # Вступительная теория о списке состояния механизмов защиты ядра
 
 После запуска ВМ при входе в пользователя появляется сообщение:
-<pre>
+<!-- <pre>
 _____       _       ______    _ _
 |  __ \     (_)     |  ____|  | | |
 | |__) |__ _ _ _ __ | |__ __ _| | |
@@ -77,7 +77,9 @@ To start, ssh with level0/level0 on :4242
     System-wide ASLR (kernel.randomize_va_space): <font class=off>Off (Setting: 0)</font>
     RELRO           STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
     <font class=off>No RELRO        No canary found   <font class=on>NX enabled</font>    No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/level0/level0</font>
-</pre>
+</pre> -->
+![level0](./README/level0.png)
+
 Это список состояния механизмов защиты ядра.
 
 Чтобы повторно посмотреть этот вывод, можно вызвать 3 команды:
@@ -215,13 +217,14 @@ level0@RainFall:~$ su level1
 <a name="lvl1"></a> 
 # level1
 
-<pre>
+<!-- <pre>
 level0@RainFall:~$ su level1
 <font color=grey>Password: 1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a</font>
 
 RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
 <font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/level1/level1</font>
-</pre>
+</pre> -->
+![level1](./README/level1.png)
 
 ...................... \
 RELRO: [защищает структуры исполняемого ELF-файла (изменение которых позволяет взломщику изменить ход выполнения программы) путем модификации секций PLT (Procedure Linking Table) или GOT (Global Offset Table) ELF-файла. При полном RELRO, вся таблица GOT перед началом исполнения в памяти помечается доступной только для чтения и таким образом предотвращает свою модификацию потенциальным злоумышленником.](https://www.opennet.ru/opennews/art.shtml?num=27938) Значит, что в этом случае можно "на ходу" поменять выполнение программы.
@@ -307,25 +310,26 @@ gdb -batch -ex 'file ./level1' -ex 'disas main'
 ```
 <details> 
   <summary> Анализ disassemble main (не обязательно к прочтению) в развороте: </summary>
-создается стековый фрейм (stack frame) или кадр стека: \
-`0x08048480 <+0>:     push   %ebp` сохраняет в стеке содержимое регистра EBP \
+  
+создается стековый фрейм (stack frame) или кадр стека: <br>
+`0x08048480 <+0>:     push   %ebp` сохраняет в стеке содержимое регистра EBP <br>
 `0x08048481 <+1>:     mov    %esp,%ebp` присваивает регистру
-EBP значение ESP \
+EBP значение ESP <br>
 `0x08048483 <+3>:     and    $0xfffffff0,%esp` выравнивание стека по 16-байтовой границе
 
-Далее: \
+Далее: <br>
 `0x08048486 <+6>:     sub    $0x50,%esp` резерв места для локальных переменных функции main 50<sub>16</sub> = 80<sub>10</sub> байт
 
-Приготовления для вызова функции gets(): \
-`0x08048489 <+9>:     lea    0x10(%esp),%eax` в eax помещается значение `esp+10` [(без разименования)](https://stackoverflow.com/questions/1658294/whats-the-purpose-of-the-lea-instruction), то есть адрес. \
-`0x0804848d <+13>:    mov    %eax,(%esp)` в gets() передается указатель. \
+Приготовления для вызова функции gets(): <br>
+`0x08048489 <+9>:     lea    0x10(%esp),%eax` в eax помещается значение `esp+10` [(без разименования)](https://stackoverflow.com/questions/1658294/whats-the-purpose-of-the-lea-instruction), то есть адрес. <br>
+`0x0804848d <+13>:    mov    %eax,(%esp)` в gets() передается указатель. <br>
 `0x08048490 <+16>:    call   0x8048340 <gets@plt>` вызов gets()
 
 Последнее:
-`0x08048495 <+21>:    leave  ` \
-Инструкция leave равносильна двум инструкциям \
-1: `mov esp,ebp` вершина стрека указывает на значение, которое занимала перед входом в функцию main \
-2: `pop ebp` ebp опять принимает значение ebp вызывающей функции. \
+`0x08048495 <+21>:    leave  ` <br>
+Инструкция leave равносильна двум инструкциям <br>
+1: `mov esp,ebp` вершина стрека указывает на значение, которое занимала перед входом в функцию main <br>
+2: `pop ebp` ebp опять принимает значение ebp вызывающей функции. <br>
 `0x08048496 <+22>:    ret    `
 инструкция ret верхнее значение стека присваивает регистру eip, [предполагая, что это сохраненный адрес возврата в вызывающую функцию, переходит по этому адресу](https://snovvcrash.rocks/2019/10/20/classic-stack-overflow.html).
 </details>
@@ -337,7 +341,7 @@ EBP значение ESP \
 ## Разработка эксплоита:
 1. Расчет смещения EIP (адреса возврата) \
 [Воспользуюсь сайтом.](https://projects.jason-rush.com/tools/buffer-overflow-eip-offset-string-generator/)
-![Получается так:](./README/buf_overflow_l1.png)
+![Получается так:](./README/level1_buf_overflow.png)
 Нужное смещение 76 байт.
 
 
@@ -421,22 +425,23 @@ cat /home/user/level2/.pass
 # \/
 # 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
 ```
-
+```sh
 su level2
 # Password: 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
-
+```
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl2"></a> 
 # level2
 
-<pre>
+<!-- <pre>
 level0@RainFall:~$ su level2
 <font color=grey>Password: 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77</font>
 
 RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
 <font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/level2/level2</font>
-</pre>
+</pre> -->
+![level2](./README/level2.png)
 
 #
 ###### [вернуться к содержанию](#content)
