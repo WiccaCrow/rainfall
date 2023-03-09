@@ -22,6 +22,10 @@ fi
 
 # доступные ОС для установки на машине хосте.
 # VBoxManage list ostypes
+if ! VBoxManage list ostypes | grep Ubuntu_64; then
+    echo "It is impossible to install Ubuntu_64 on your VBox"
+    exit
+fi
 
 #  создать виртуальную машину и зарегистрировать в списке виртуальных машин
 echo -e "\033[32m Virtual machine: Create and register \033[0m"
