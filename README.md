@@ -375,28 +375,6 @@ EBP значение ESP <br>
 <br><br><br>
 </details>
 
-<details> 
-  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
-<pre>
-#include "stdlib.h"
-#include "unistd.h"
-#include "stdio.h"
-#include "string.h"
-#include "sys/types.h"
-#include "sys/wait.h"
-<br>
-void  run(void) {
-        fprintf(stdout, "Good... Wait what?\n");
-        system("/bin/sh");
-}<br>
-int   main(int argc, char **argv) {
-        char buffer[64];
-        gets(buffer);
-}
-</pre>
-gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level1.c -o level1
-</details> 
-
 Интересующая строка: \
 `0x08048496 <+22>:    ret  ` инструкция ret верхнее значение стека присваивает регистру eip. \
 В соответствии с анализом, приведенным выше, надо переполнить буфер и подать нужный адрес на место, где в стеке размещался бы регистр eip. Ниже это я рассмотрю.
@@ -669,6 +647,28 @@ su level2
 # Password: 53a4a712787f40ec66c3c26c1f4b164dcad5552b038bb0addd69bf5bf6fa8e77
 ```
 
+<details> 
+  <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
+<pre>
+#include "stdlib.h"
+#include "unistd.h"
+#include "stdio.h"
+#include "string.h"
+#include "sys/types.h"
+#include "sys/wait.h"
+<br>
+void  run(void) {
+        fprintf(stdout, "Good... Wait what?\n");
+        system("/bin/sh");
+}<br>
+int   main(int argc, char **argv) {
+        char buffer[64];
+        gets(buffer);
+}
+</pre>
+gcc -m32 -z execstack -Wl,-z,norelro -fno-stack-protector исходник_level1.c -o level1
+</details> 
+
 #
 ###### [вернуться к содержанию](#content)
 <a name="lvl2"></a> 
@@ -683,22 +683,40 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 </pre> -->
 ![level2](./README/level2.png)
 
-<details><summary>В развороте вывод в терминал: <br> ls -la , <br> getfacl level2 , <br> ltrace ./level2, <br> gdb level2 -> disassemble на список функций </summary>
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
 
 ```sh
 ls -la
 # ||
 # \/
 # -rwsr-s---+ 1 level3 users  5403 Mar  6  2016 level2
+```
+---
+</details>
+<details><summary> getfacl level2 </summary>
 
+```sh
 getfacl level2 
 # ||
 # \/
-# ...
+# # file: level2
 # # owner: level3
+# # group: users
 # # flags: ss-
-# ...
+# user::rwx
+# user:level2:r-x
+# user:level3:r-x
+# group::---
+# mask::r-x
+# other::---
+```
+---
 
+</details>
+<details><summary> ./level2 </summary>
+
+```sh
 ./level2 
 # ||
 # \/
@@ -709,7 +727,13 @@ getfacl level2
 # \/
 # sdgsdg
 # sdgsdg
+```
+---
 
+</details>
+<details><summary> ltrace ./level2 </summary>
+
+```sh
 ltrace ./level2 
 # ||
 # \/
@@ -721,14 +745,28 @@ ltrace ./level2
 # )                                                         = 15
 # strdup(" 12345678Hello")                                                       = 0x0804a008
 # +++ exited (status 8) +++
+```
+---
 
+</details>
+<details><summary> gdb level2 -> disassemble на список функций </summary>
+
+```sh
 (gdb) disassemble Tab
 # ||
 # \/
-# main p printf puts fflush strdup gets
+# main 
+# p 
+# printf 
+# puts 
+# fflush 
+# strdup 
+# gets
 # ...
 ```
+---
 </details>
+<br>
 
 Из вывода `ltrace` видно, что используются: \
 `gets()` - можно переполнить буфер,         \
@@ -980,16 +1018,44 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 ![level3](./README/level3.png)
 
-<details><summary>В развороте вывод в терминал: <br> ls -la , <br> ./level3 , <br> ./level3 12345, <br> getfacl level3 , <br> ltrace ./level3, <br> gdb level3 -> disassemble на список функций. </summary>
+<!-- <details><summary>В развороте вывод в терминал: <br> ls -la , <br> ./level3 , <br> ./level3 12345, <br> getfacl level3 , <br> ltrace ./level3, <br> gdb level3 -> disassemble на список функций. </summary> -->
+
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
 
 ```sh
-
 ls -la
 # ||
 # \/
 # ...
 # -rwsr-s---+ 1 level4 users  5366 Mar  6  2016 level3
+```
+---
+</details>
+<details><summary> getfacl level3 </summary>
 
+```sh
+getfacl level3 
+# ||
+# \/
+# # file: level3
+# # owner: level4
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:level3:r-x
+# user:level4:r-x
+# group::---
+# mask::r-x
+# other::---
+
+```
+---
+
+</details>
+<details><summary> ./level3 с аргументами и без аргументов </summary>
+
+```sh
 ./level3 
 # ||
 # \/
@@ -1005,21 +1071,13 @@ ls -la
 # ||
 # \/
 # 12345
+```
+---
 
-getfacl level3 
-# ||
-# \/
-# # file: level3
-# # owner: level4        !!!!!!!!!!!!!!!
-# # group: users
-# # flags: ss-
-# user::rwx
-# user:level3:r-x
-# user:level4:r-x
-# group::---
-# mask::r-x
-# other::---
+</details>
+<details><summary> ltrace ./level3 </summary>
 
+```sh
 ltrace ./level3 
 # 12345
 # ||
@@ -1031,7 +1089,13 @@ ltrace ./level3
 # )                                                    = 6
 # +++ exited (status 0) +++
 
+```
+---
 
+</details>
+<details><summary> gdb level3 -> disassemble на список функций </summary>
+
+```sh
 (gdb) disassemble 
 # ||
 # \/
@@ -1044,9 +1108,10 @@ ltrace ./level3
 # system
 # fwrite                     
 # ...
-
 ```
+---
 </details>
+<br>
 
 `m` - это глобальная переменная <a name="lvl3_m"></a> 
 ```sh
@@ -1320,7 +1385,10 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 ![level4](./README/level4.png)
 
-<details><summary>В развороте вывод в терминал: <br> ls -la , <br> getfacl level4 , <br> ltrace ./level4, <br> gdb level4 -> disassemble на список функций. </summary>
+<!-- <details><summary>В развороте вывод в терминал: <br> ls -la , <br> getfacl level4 , <br> ltrace ./level4, <br> gdb level4 -> disassemble на список функций. </summary> -->
+
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
 
 ```sh
 ls -la
@@ -1328,13 +1396,57 @@ ls -la
 # \/
 # -rwsr-s---+ 1 level5 users  5252 Mar  6  2016 level4
 # ...
+```
+---
+</details>
+<details><summary> getfacl level4 </summary>
 
+```sh
 getfacl level4 
 # ||
 # \/
-# owner: level5
-# flags: ss-
+# # file: level4
+# # owner: level5
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:level4:r-x
+# user:level5:r-x
+# group::---
+# mask::r-x
+# other::---
+```
+---
 
+</details>
+<details><summary> ./level4 </summary>
+
+```sh
+./level4 
+# ||
+# \/
+# 
+# 
+
+./level4 AA
+# ||
+# \/
+# 
+# 
+
+./level4 
+# ||
+# \/
+# AAAA
+# AAAA
+
+```
+---
+
+</details>
+<details><summary> ltrace ./level4 </summary>
+
+```sh
 ltrace ./level4 
 # ||
 # \/
@@ -1345,6 +1457,13 @@ ltrace ./level4
 # )                                                     = 5
 # +++ exited (status 0) +++
 
+```
+---
+
+</details>
+<details><summary> gdb level4 -> disassemble на список функций </summary>
+
+```sh
 gdb level4
 (gdb) disassemble #Tab
 # ||
@@ -1358,13 +1477,9 @@ gdb level4
 # printf
 # system
 # ...
-
 ```
-
 ---
-
 </details>
-
 <br><br>
 
 Коротко:
@@ -1625,20 +1740,66 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 ![level5](./README/level5.png)
 
-<details><summary>В развороте вывод в терминал: <br> ls -la , <br> getfacl level5 , <br> ltrace ./level5, <br> gdb level5 -> disassemble на список функций </summary>
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
 
 ```sh
 ls -la
 # ||
 # \/
 # -rwsr-s---+ 1 level6 users  5385 Mar  6  2016 level5
+# ...
+```
+---
+</details>
+<details><summary> getfacl level5 </summary>
 
+```sh
 getfacl level5 
 # ||
 # \/
-# owner: level6
-# flags: ss-
+# # file: level5
+# # owner: level6
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:level5:r-x
+# user:level6:r-x
+# group::---
+# mask::r-x
+# other::---
+```
+---
 
+</details>
+<details><summary> ./level5 </summary>
+
+```sh
+./level5 
+# ||
+# \/
+# 
+# 
+
+./level5 AAAA
+# ||
+# \/
+# 
+# 
+
+./level5 
+# ||
+# \/
+# AAAA
+# AAAA
+
+```
+---
+
+</details>
+<details><summary> ltrace ./level5 </summary>
+
+```sh
 ltrace ./level5 
 # ||
 # \/
@@ -1649,7 +1810,13 @@ ltrace ./level5
 # )                                                     = 5
 # exit(1 <unfinished ...>
 # +++ exited (status 1) +++
+```
+---
 
+</details>
+<details><summary> gdb level8 -> disassemble на список функций </summary>
+
+```sh
 gdb level5
 (gdb) disassemble #Tab
 # ||
@@ -1664,10 +1831,10 @@ gdb level5
 # fgets
 # system
 # ...
-
-
 ```
+---
 </details>
+
 
 Аналогично предыдущим уровням - в main происходит только вызов одной единственной функции `n()`.
 
@@ -1937,29 +2104,45 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 ![level6](./README/level6.png)
 
-<details><summary>В развороте вывод в терминал: <br> ls -la , <br> getfacl level6 , <br> ./level6 , <br> ./level6 AAAA, <br> ./level6 AAAA AA , <br> ltrace ./level6, <br> gdb level6 -> disassemble на список функций </summary>
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
 
 ```sh
 ls -la
 # ||
 # \/
 # -rwsr-s---+ 1 level7 users  5274 Mar  6  2016 level6
+```
+---
+</details>
+<details><summary> getfacl level8 </summary>
 
+```sh
 getfacl level6 
 # ||
 # \/
-# owner: level7
-# flags: ss-
+# # file: level6
+# # owner: level7
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:level7:r-x
+# user:level6:r-x
+# group::---
+# mask::r-x
+# other::---
 
-ltrace ./level6 
+```
+---
+
+</details>
+<details><summary> ./level6 с аргументами и без </summary>
+
+```sh
+./level6 
 # ||
 # \/
-# __libc_start_main(0x804847c, 1, 0xbffff6f4, 0x80484e0, 0x8048550 <unfinished ...>
-# malloc(64)                                                           = 0x0804a008
-# malloc(4)                                                            = 0x0804a050
-# strcpy(0x0804a008, NULL <unfinished ...>
-# --- SIGSEGV (Segmentation fault) ---
-# +++ killed by SIGSEGV +++
+# Segmentation fault (core dumped)
 
 ./level6 AAAA
 # ||
@@ -1970,7 +2153,29 @@ ltrace ./level6
 # ||
 # \/
 # Nope
+```
+---
 
+</details>
+<details><summary> ltrace ./level6 </summary>
+
+```sh
+ltrace ./level6 
+# ||
+# \/
+# __libc_start_main(0x804847c, 1, 0xbffff6f4, 0x80484e0, 0x8048550 <unfinished ...>
+# malloc(64)                                                           = 0x0804a008
+# malloc(4)                                                            = 0x0804a050
+# strcpy(0x0804a008, NULL <unfinished ...>
+# --- SIGSEGV (Segmentation fault) ---
+# +++ killed by SIGSEGV +++
+```
+---
+
+</details>
+<details><summary> gdb level6 -> disassemble на список функций </summary>
+
+```sh
 gdb level6
 (gdb) disassemble #Tab
 # ||
@@ -1986,9 +2191,10 @@ gdb level6
 # m
 # puts
 # ...
-
 ```
+---
 </details>
+<br>
 
 <><pre>
 Функции: 
@@ -2227,21 +2433,33 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 ![level7](./README/level7.png)
 
-<details><summary>В развороте вывод в терминал: <br> ls -la , <br> getfacl level7 , <br> ./level7 , <br> ./level7 AAAA, <br> ./level7 AAAA AAAA , <br> ltrace ./level7 AAAA BBBB, <br> gdb level6 -> disassemble на список функций </summary>
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
 
 ```sh
 ls -la
 # ||
 # \/
 # -rwsr-s---+ 1 level8 users  5648 Mar  9  2016 level7
+```
+---
+</details>
+<details><summary> getfacl level7 </summary>
 
+```sh
 getfacl level7 
 # ||
 # \/
 # owner: level8
 # flags: ss-
 # ...
+```
+---
 
+</details>
+<details><summary> ./level7 с аргументами и без аргументов </summary>
+
+```sh
 ./level7 
 # ||
 # \/
@@ -2256,7 +2474,13 @@ getfacl level7
 # ||
 # \/
 # ~~
+```
+---
 
+</details>
+<details><summary> ltrace ./level7 AAAA BBBB </summary>
+
+```sh
 ltrace ./level7 AAAA BBBB
 # ||
 # \/
@@ -2271,7 +2495,13 @@ ltrace ./level7 AAAA BBBB
 # fgets( <unfinished ...>
 # --- SIGSEGV (Segmentation fault) ---
 # +++ killed by SIGSEGV +++
+```
+---
 
+</details>
+<details><summary> gdb level7 -> disassemble на список функций </summary>
+
+```sh
 gdb level7
 (gdb) disassemble #Tab
 # ||
@@ -2288,7 +2518,9 @@ gdb level7
 # c
 # time
 ```
+---
 </details>
+<br>
 
 Коротко:
 
@@ -2637,20 +2869,32 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 </pre> -->
 ![level8](./README/level8.png)
 
-<details><summary>В развороте вывод в терминал: <br> ls -la , <br> getfacl level8 , <br> ./level8 , <br> ltrace ./level8, <br> gdb level8 -> disassemble на список функций </summary>
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
 
 ```sh
 ls -la
 # ||
 # \/
 # -rwsr-s---+ 1 level9 users  6057 Mar  6  2016 level8
+```
+---
+</details>
+<details><summary> getfacl level8 </summary>
 
+```sh
 getfacl level8 
 # ||
 # \/
 # owner: level9
 # flags: ss-
+```
+---
 
+</details>
+<details><summary> ./level8 </summary>
+
+```sh
 ./level8 
 # ||
 # \/
@@ -2658,7 +2902,13 @@ getfacl level8
 # AA, AA
 # (nil), (nil) 
 # ^C
+```
+---
 
+</details>
+<details><summary> ltrace ./level8 </summary>
+
+```sh
 ltrace ./level8 
 # ||
 # \/
@@ -2676,7 +2926,13 @@ ltrace ./level8
 # fgets(^C <unfinished ...>
 # --- SIGINT (Interrupt) ---
 # +++ killed by SIGINT +++
+```
+---
 
+</details>
+<details><summary> gdb level8 -> disassemble на список функций </summary>
+
+```sh
 gdb level8
 (gdb) disassemble #Tab
 # ||
@@ -2695,7 +2951,9 @@ gdb level8
 # malloc
 # printf
 ```
-</details> 
+---
+</details>
+
 
 <br><br>
 Коротко:
@@ -3029,6 +3287,7 @@ serviceAAAABBBBCCCCDDDD
 # 
 # или
 serviceeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+# 
 # или
 service
 service
@@ -3065,16 +3324,22 @@ su level9
 
 ```sh
 # 1. Выделение памяти под auth:
-(nil), (nil)            # печать в терминал
+(nil), (nil)            # печать в терминал при запуске программы
 auth                    # введенная строка
 # ||                    #
 # \/                    #
 (gdb) x/12xw 0x804a008  # как это выглядит в памяти:
 0x804a008:      0x00000000      0x00000000      0x00000000      0x00020ff1
+# ||
+# \/
+0x804a008, (nil)        # печать в терминал после ввода "auth "
 ##########################################################################
 
-# 2. Заполнение auth+32. Способ 1:
-0x804a008, (nil)        # печать в терминал
+# 2. Заполнение auth+32. 
+
+##########################################################################
+# 2.1. Способ 1:
+0x804a008, (nil)        # печать в терминал после ввода "auth "
 serviceAAAABBBBCCCCDDDD # введенная строка
 # ||                    #
 # \/                    #
@@ -3082,9 +3347,13 @@ serviceAAAABBBBCCCCDDDD # введенная строка
 0x804a008:      0x0000000a      0x00000000      0x00000000      0x00000019
 0x804a018:      0x41414141      0x42424242      0x43434343      0x44444444
 0x804a028:      0x0000000a      0x00020fd9      0x00000000      0x00000000
+# ||
+# \/
+0x804a008, 0x804a018    # печать в терминал после ввода "auth " и "serviceAAAABBBBCCCCDDDD"
+
 ##########################################################################
-# 2. Заполнение auth+32. Способ 2:
-0x804a008, (nil)        # печать в терминал
+# 2.2. Способ 2:
+0x804a008, (nil)        # печать в терминал после ввода "auth " и до первого ввода "service"
 service                 # введенная строка
 # ||                    #
 # \/                    #
@@ -3092,8 +3361,9 @@ service                 # введенная строка
 0x804a008:      0x0000000a      0x00000000      0x00000000      0x00000011
 0x804a018:      0x0000000a      0x00000000      0x00000000      0x00020fe1
 0x804a028:      0x00000000      0x00000000      0x00000000      0x00000000
-
-0x804a008, 0x804a018    # печать в терминал
+# ||
+# \/
+0x804a008, 0x804a018    # печать в терминал после ввода "auth " и первого ввода "service"
 service                 # введенная строка
 # ||                    #
 # \/                    #
@@ -3101,8 +3371,9 @@ service                 # введенная строка
 0x804a008:      0x0000000a      0x00000000      0x00000000      0x00000011
 0x804a018:      0x0000000a      0x00000000      0x00000000      0x00000011
 0x804a028:      0x0000000a      0x00000000      0x00000000      0x00020fd1
-
-0x804a008, 0x804a028    # печать в терминал
+# ||
+# \/
+0x804a008, 0x804a028    # печать в терминал после ввода "auth ", "service", "service"
 ```
 </details> 
 
@@ -3199,6 +3470,396 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 ![level](./README/level9.png)
 
+<!-- <details> 
+  <summary>  </summary>
+</details>  -->
+Проверяю содержимое домашней директории пользователя и свойства содержимого:
+<details> 
+  <summary> ls -la  </summary>
+
+```sh
+ls -la
+# ||
+# \/
+# ...
+# -rwsr-s---+ 1 bonus0 users  6720 Mar  6  2016 level9
+```
+---
+
+</details> 
+
+<details> 
+  <summary> getfacl level9 </summary>
+  
+```sh
+getfacl level9
+# ||
+# \/
+# # file: level9
+# # owner: bonus0
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:level9:r-x
+# user:bonus0:r-x
+# group::---
+# mask::r-x
+# other::---
+  ```
+---
+
+</details> 
+
+<details> 
+  <summary> ./level9 с аргументами и без аргументов </summary>
+
+```sh
+./level9          ; echo $?
+# ||
+# \/
+# 1
+./level9 AAAABBBB ; echo $?
+# ||
+# \/
+# 11
+./level9 AAAA BBBB; echo $?
+# ||
+# \/
+# 11
+```
+---
+
+</details> 
+
+<details> 
+  <summary> ltrace ./level9 с аргументами и без аргументов </summary>
+
+```sh
+
+ltrace ./level9
+# ||
+# \/
+# __libc_start_main(0x80485f4, 1, 0xbffff6f4, 0x8048770, 0x80487e0 <unfinished ...>
+# _ZNSt8ios_base4InitC1Ev(0x8049bb4, 0xb7d79dc6, 0xb7eebff4, 0xb7d79e55, 0xb7f4a330) = 0xb7fce990
+# __cxa_atexit(0x8048500, 0x8049bb4, 0x8049b78, 0xb7d79e55, 0xb7f4a330) = 0
+# _exit(1 <unfinished ...>
+# +++ exited (status 1) +++
+
+ltrace ./level9 AAAABBBB
+# ||
+# \/
+# __libc_start_main(0x80485f4, 2, 0xbffff6e4, 0x8048770, 0x80487e0 <unfinished ...>
+# _ZNSt8ios_base4InitC1Ev(0x8049bb4, 0xb7d79dc6, 0xb7eebff4, 0xb7d79e55, 0xb7f4a330) = 0xb7fce990
+# __cxa_atexit(0x8048500, 0x8049bb4, 0x8049b78, 0xb7d79e55, 0xb7f4a330) = 0
+# _Znwj(108, 0xbffff6e4, 0xbffff6f0, 0xb7d79e55, 0xb7fed280)           = 0x804a008
+# _Znwj(108, 5, 0xbffff6f0, 0xb7d79e55, 0xb7fed280)                    = 0x804a078
+# strlen("AAAABBBB")                                                   = 8
+# memcpy(0x0804a00c, "AAAABBBB", 8)                                    = 0x0804a00c
+# _ZNSt8ios_base4InitD1Ev(0x8049bb4, 11, 0x804a078, 0x8048738, 0x804a00c) = 0xb7fce4a0
+# +++ exited (status 11) +++
+
+ltrace ./level9 AAAA BBBB
+# ||
+# \/
+# __libc_start_main(0x80485f4, 3, 0xbffff6e4, 0x8048770, 0x80487e0 <unfinished ...>
+# _ZNSt8ios_base4InitC1Ev(0x8049bb4, 0xb7d79dc6, 0xb7eebff4, 0xb7d79e55, 0xb7f4a330) = 0xb7fce990
+# __cxa_atexit(0x8048500, 0x8049bb4, 0x8049b78, 0xb7d79e55, 0xb7f4a330) = 0
+# _Znwj(108, 0xbffff6e4, 0xbffff6f4, 0xb7d79e55, 0xb7fed280)           = 0x804a008
+# _Znwj(108, 5, 0xbffff6f4, 0xb7d79e55, 0xb7fed280)                    = 0x804a078
+# strlen("AAAA")                                                       = 4
+# memcpy(0x0804a00c, "AAAA", 4)                                        = 0x0804a00c
+# _ZNSt8ios_base4InitD1Ev(0x8049bb4, 11, 0x804a078, 0x8048738, 0x804a00c) = 0xb7fce4a0
+# +++ exited (status 11) +++
+```
+---
+
+</details> 
+
+<details><summary> gdb level9 -> disassemble на список функций </summary>
+
+```sh
+gdb level9
+(gdb) disassemble #Tab
+# ||
+# \/
+# класс N (_ZTVN10__cxxabiv117__class_type_infoE@@CXXABI_1.3):    
+typeinfo for N
+typeinfo name for N
+vtable for N   
+N::N(int)
+N::operator+(N&)
+N::operator-(N&)
+N::setAnnotation(char*)
+__static_initialization_and_destruction_0(int, int)
+#
+#
+main
+_exit
+operator new(unsigned int) #_Znwj@plt new для класса N  
+#
+memcpy
+strlen
+
+```
+---
+</details> 
+<br><br>
+
+Коротко:
+<details> 
+  <summary> class N </summary>
+
+```cpp
+{
+
+public:
+
+N::N(int);
+N::operator+(N&);
+N::operator-(N&);
+N::setAnnotation(char* str) { 
+    memcpy(N_буфер, str, strlen(str)); }
+                                 // смотреть ниже разворот (*экземпляр_N5).setAnnotation(argv[1])
+
+private:
+
+int число;                       // смотреть разворот функции main (disassemble main) пункт 3 <main+42> и пункт 4 <main+76>, пункты 6.4.2., 6.4.3.
+char N_буфер[какого-то размера]; // смотреть ниже (*экземпляр_N5).setAnnotation(argv[1])
+                                 // или 
+                                 // disassemble 0x8048714
+
+};
+```
+---
+
+</details> 
+
+<details> 
+  <summary> Функция main() {
+  &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; 
+  &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; 
+  &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; // disassemble main в развороте</summary>
+
+```sh
+(gdb) disassemble main
+# Dump of assembler code for function main:
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+0x080485f4 <+0>:     push   %ebp              # сохраняет в стеке содержимое регистра EBP
+0x080485f5 <+1>:     mov    %esp,%ebp         # присваивает регистру EBP значение ESP
+0x080485f7 <+3>:     push   %ebx              # сохраняет в стеке содержимое регистра EBX
+0x080485f8 <+4>:     and    $0xfffffff0,%esp  # выравнивание стека (по 16 байт)
+0x080485fb <+7>:     sub    $0x20,%esp        # выделяется 20 (hex) = 32 (dec) байт под локальные переменные
+
+# 2. Проверяется введенное количество аргументов:
+# 
+#   ( if (argc < 2) { _exit(1);} )
+# 
+# 2.1. Сравнение:
+0x080485fe <+10>:    cmpl   $0x1,0x8(%ebp)         # argc сравнивается с 1
+                           #       ____|
+                           #       ||    
+                           # argc: \/                       
+                           # x $ebp+8 -> 0xbffff640:     0x2
+                           # argv
+                           # x $ebp+12
+                           # 0xbffff644:     0xbffff6d4
+                           #   argv[0] x/s  *0xbffff6d4
+                           #                 0xbffff814:      "/home/user/level9/level9"
+                           #   argv[1] x/s  *0xbffff6d8
+                           #                 0xbffff82d:      "AAAA"
+
+0x08048602 <+14>:    jg     0x8048610 <main+28>   # если argc > 1, продолжить программу с <main+28> (пункт 3.)
+# 2.2. Подготовка к вызову _exit():
+0x08048604 <+16>:    movl   $0x1,(%esp)           # иначе если argc < 2, передать аргумент 1 в _exit()
+0x0804860b <+23>:    call   0x80484f0 <_exit@plt> # вызов _exit(1)
+
+# 3. Создание первого эеземпляра класса N (назову его экземпляр_N5 - по переданному далее в конструктор аргументу 5):
+# Выделена память под экземплар класса:
+0x08048610 <+28>:    movl   $0x6c,(%esp)   # 6c(hex)=108(dec)
+0x08048617 <+35>:    call   0x8048530 <_Znwj@plt> # new для класса на 108 байт
+# Заполнен экземпляр класса:
+0x0804861c <+40>:    mov    %eax,%ebx      # адрес выделенной памяти сохранен в регистр ebx 
+                                           # x $eax -> 0x804a008
+
+0x0804861e <+42>:    movl   $0x5,0x4(%esp) # число 5 передано                2м аргументом     
+0x08048626 <+50>:    mov    %ebx,(%esp)    # адрес памяти для класса передан 1м аргументом
+0x08048629 <+53>:    call   0x80486f6 <_ZN1NC2Ei> # вызван конструктор класса N::N(int n=5) ()
+# N::N(int) ()
+# Breakpoint 4, 0x080486f9 in N::N(int) ()
+(gdb) disassemble 0x80486f6
+# Dump of assembler code for function _ZN1NC2Ei:
+#    0x080486f6 <+0>:     push   %ebp
+#    0x080486f7 <+1>:     mov    %esp,%ebp
+# => 0x080486f9 <+3>:     mov    0x8(%ebp),%eax
+#    0x080486fc <+6>:     movl   $0x8048848,(%eax)
+#    0x08048702 <+12>:    mov    0x8(%ebp),%eax
+#    0x08048705 <+15>:    mov    0xc(%ebp),%edx  #x $edx 0x5
+#    0x08048708 <+18>:    mov    %edx,0x68(%eax) # в 68(hex)=104(dec) кладу значение 5
+#    0x0804870b <+21>:    pop    %ebp
+#    0x0804870c <+22>:    ret    
+# End of assembler dump.
+0x0804862e <+58>:    mov    %ebx,0x1c(%esp) # адрес экземпляр_N5 класса N сохранен на стек
+
+# 4. Создание второго эеземпляра класса N (назову его экземпляр_N6):
+0x08048632 <+62>:    movl   $0x6c,(%esp)   # 6c(hex)=108(dec)
+0x08048639 <+69>:    call   0x8048530 <_Znwj@plt> # new для класса на 108 байт
+0x0804863e <+74>:    mov    %eax,%ebx      # адрес выделенной памяти сохранен в регистр ebx 
+                                           # x $eax -> 0x804a078
+
+0x08048640 <+76>:    movl   $0x6,0x4(%esp) # число 6 передано                2м аргументом     
+0x08048648 <+84>:    mov    %ebx,(%esp)    # адрес памяти для класса передан 1м аргументом
+0x0804864b <+87>:    call   0x80486f6 <_ZN1NC2Ei> # вызван конструктор класса N::N(int n=6) ()
+0x08048650 <+92>:    mov    %ebx,0x18(%esp) # адрес экземпляр_N6 класса N сохранен на стек
+# аналогично 3 пункту
+
+# 5. N::setAnnotation(char*):
+0x08048654 <+96>:    mov    0x1c(%esp),%eax # адрес экземпляр_N5 класса N помещен в регистр eax
+0x08048658 <+100>:   mov    %eax,0x14(%esp) # экземпляр_N5 помещен на стек esp+14
+
+0x0804865c <+104>:   mov    0x18(%esp),%eax # адрес экземпляр_N6 класса N помещен в регистр eax
+0x08048660 <+108>:   mov    %eax,0x10(%esp) # экземпляр_N6 передан   3м аргументом
+
+0x08048664 <+112>:   mov    0xc(%ebp),%eax  # указатель на argv помещен в регистр eax
+                  # x    $eax  -> 0xbffff6d4: 0xbffff814
+                  # x/s *$eax -> 0xbffff814: "/home/user/level9/level9"
+0x08048667 <+115>:   add    $0x4,%eax       # смещение до argv[1] аргумента переданного в программу
+                  # например, программа запущена: "./level9 AAAA"
+                  # x/s *($eax+4)
+                  # 0xbffff82d:      "AAAA"
+0x0804866a <+118>:   mov    (%eax),%eax     # в eax положенио значение argv[1] строка "AAAA"
+0x0804866c <+120>:   mov    %eax,0x4(%esp)  # значение argv[1]  
+                                            # строка "AAAA" передана 2м аргументом
+
+0x08048670 <+124>:   mov    0x14(%esp),%eax # получен адрес экземпляр_N5
+0x08048674 <+128>:   mov    %eax,(%esp)     # экземпляр_N5 передан   1м аргументом
+0x08048677 <+131>:   call   0x804870e <_ZN1N13setAnnotationEPc> # 
+                                            # вызов экземпляр_N5.setAnnotation(argv[1]);
+                            # setAnnotation(argv[1]) - это публичная функция-член класса N, 
+                            # а это значит, что вызов функции будет таким:
+                            # 1й_аргумент_экземпляр_класса.функция_член_класса(2й,3й,...,остальные переданные аргументы)
+
+# 6. Подготовка и вызов (экземпляр_N5 + экземпляр_N6):
+# 
+# 6.1. Подготовка N::operator+(N&) () 
+#      для дальнейшего вызова в <main+159> 
+#      (помещено в регистр edx):
+0x0804867c <+136>:   mov    0x10(%esp),%eax # адрес 0x804a078 экземпляр_N6 помещен в eax
+0x08048680 <+140>:   mov    (%eax),%eax     # данные из экземпляр_N6 помещены в eax
+0x08048682 <+142>:   mov    (%eax),%edx     # функция класса N::operator+(N&) ():
+                                            # x $eax -> 0x8048848 <_ZTV1N+8>:   0x0804873a
+                                            # x -> 0x804873a <_ZN1NplERS_>:        0x8be58955
+# Breakpoint 1, 0x0804873a in N::operator+(N&) ()
+# 
+# 6.2. Получение данных из экземпляр_N6
+0x08048684 <+144>:   mov    0x14(%esp),%eax # адрес 0x804a008 экземпляр_N5 помещен в eax
+0x08048688 <+148>:   mov    %eax,0x4(%esp)  # экземпляр_N5 передан 2м аргументом
+# 
+# 6.3. Получение данных из экземпляр_N5
+0x0804868c <+152>:   mov    0x10(%esp),%eax  # адрес 0x804a078 экземпляр_N6 помещен в eax
+0x08048690 <+156>:   mov    %eax,(%esp)      # экземпляр_N6 передан 1м аргументом
+# 
+# 6.4. Вызов функции N::operator+(N&) ():
+0x08048693 <+159>:   call   *%edx
+# Breakpoint 1, 0x0804873a in N::operator+(N&) ()
+# (gdb) disassemble 0x0804873a
+# Dump of assembler code for function _ZN1NplERS_:
+# 
+# 6.4.1. создается стековый фрейм (stack frame) или кадр стека:
+#  0x0804873a <+0>:  push %ebp
+#  0x0804873b <+1>:  mov  %esp,%ebp
+# 
+# 6.4.2. получение данных из экземпляр_N6:
+#  0x0804873d <+3>:  mov  0x8(%ebp),%eax  # получение адреса экземпляр_N6
+#  0x08048740 <+6>:  mov  0x68(%eax),%edx # 104 ячейка памяти x $edx -> 0x6
+#                        # x $eax    -> 0x804a078
+#                        # x $eax+68 -> 6 (число 6 - приватные данные экземпляра класса N)
+# 
+# 6.4.3. получение данных из экземпляр_N5:
+#  0x08048743 <+9>:  mov 0xc(%ebp),%eax   # получение адреса экземпляр_N5
+#  0x08048746 <+12>: mov 0x68(%eax),%eax  # 104 ячейка памяти x $eax -> 0x5
+#                        # x $eax    -> 0x804a008
+#                        # x $eax+68 -> 5 (число 5 - приватные данные экземпляра класса N)
+# 
+#  0x08048749 <+15>: add %edx,%eax        # сложение (6 + 5 = 11), теперь eax = 11
+#
+# 6.4.4. Завершение и возврат из функции N::operator+(N&) ()
+#  0x0804874b <+17>: pop %ebp
+#  0x0804874c <+18>: ret 
+# End of assembler dump.
+
+# 7. Завершение и возврат из main()
+0x08048695 <+161>:   mov    -0x4(%ebp),%ebx
+0x08048698 <+164>:   leave  
+0x08048699 <+165>:   ret    
+End of assembler dump.
+```
+</details> 
+
+```cpp
+    if (argc < 2) { _exit(1);}       // 2. пункт disassemble main
+
+    N *экземпляр_N5 =                // 3. <main+58> на стек сохранен указатель на экземпляр класса
+                      new N(5);      // 3. new <main+35>, конструктор класса N <main+53>
+
+    N *экземпляр_N6 =                // 4. <main+92> на стек сохранен указатель на экземпляр класса 
+                      new N(6);      // 4. new <main+68>, конструктор класса N <main+87>
+
+                                     // пункт 5.
+    (*экземпляр_N5).setAnnotation(argv[1]); 
+
+    return (                         // пункт 7.
+       экземпляр_N6 + экземпляр_N5 );// пункт 6.  <main+159> N::operator+(N&);
+
+}
+```
+<br>
+
+В main() интересна строка с вызовом функции `N::setAnnotation(char*)`:
+<details> 
+  <summary> (*экземпляр_N5).setAnnotation(argv[1])</summary>
+
+```sh
+(gdb) x 0x804870e
+0x804870e <_ZN1N13setAnnotationEPc>:    0x83e58955
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+0x804870e <...+0>:  push  %ebp              # сохраняет в стеке содержимое регистра EBP
+0x804870f <...+1>:  mov   %esp,%ebp         # присваивает регистру EBP значение ESP
+0x8048711 <...+3>:  sub   $0x18,%esp        # выделяется 18 (hex) = 24 (dec) байт под локальные переменные
+
+# 2. Подготовка и вызов strlen():
+0x8048714 <...+6>:  mov   0xc(%ebp),%eax    # переданная в функцию строка помещена в регистр eax (например N_экземпляр.setAnnotation("AAAA"))
+                                            # x/s $eax 0xbffff82d:      "AAAA"
+0x8048717 <...+9>:  mov   %eax,(%esp)       # длина строки передана в качестве аргумента
+0x804871a <...+12>: call  0x8048520 <strlen@plt> # вызов strlen("AAAA")
+                                            # в данной программе:
+                                            # strlen(argv[1])
+
+0x804871f <...+17>: mov   0x8(%ebp),%edx    # в регистр edx помещен объект класса N
+                          # (gdb) x $edx
+                          # 0x804a008:      0x8048848 <_ZTV1N+8>
+0x8048722 <...+20>: add   $0x4,%edx         # смещение на буфер для строки член класса N
+                          # x/s ($edx+4)
+                          # 0x804a00c:       ""
+
+# 3. Подготовка и вызов memcpy():
+0x8048725 <...+23>: mov   %eax,0x8(%esp)    # значение, возвращенное вызовом strlen(argv[1]))
+                                            # длина argv[1] строки передана   3м аргументом
+0x8048729 <...+27>: mov   0xc(%ebp),%eax    # переданная в функцию argv[1] строка помещена в eax 
+0x804872c <...+30>: mov   %eax,0x4(%esp)    # argv[1] строка передана         2м аргументом
+0x8048730 <...+34>: mov   %edx,(%esp)       # член класса N буфер для строки  1м аргументом передан
+0x8048733 <...+37>: call  0x8048510 <memcpy@plt> # вызов memcpy(char* N_буфер, argv[1], strlen(argv[1]))
+
+# 4. Завершение и возврат из функции:
+0x8048738 <...+42>: leave  
+0x8048739 <...+43>: ret 
+```
+</details> 
+
+Как видно из анализа выше, уязвимость в `memcpy()`: \
+в `main()` вызвана `N::setAnnotation(char*)`, внутри которой `memcpy(N_буфер, argv[1], strlen(argv[1]))` и нет проверки на переполнение `N_буфер` от `argv[1]`.
+
+<br><br>
+
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
 <pre>
@@ -3256,6 +3917,44 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 <!-- ![bonus0](./README/bonus0.png) -->
 
+<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
+
+```sh
+```
+---
+</details>
+<details><summary> getfacl level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ltrace ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> gdb level8 -> disassemble на список функций </summary>
+
+```sh
+```
+---
+</details> -->
+
+<!-- <details> 
+  <summary>  </summary>
+</details>  -->
 
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
@@ -3318,6 +4017,41 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 <!-- ![bonus1](./README/bonus1.png) -->
 
+<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
+
+```sh
+```
+---
+</details>
+<details><summary> getfacl level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ltrace ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> gdb level8 -> disassemble на список функций </summary>
+
+```sh
+```
+---
+</details> -->
+
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
 <pre>
@@ -3362,6 +4096,41 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 </pre> -->
 
 <!-- ![bonus2](./README/bonus2.png) -->
+
+<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
+
+```sh
+```
+---
+</details>
+<details><summary> getfacl level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ltrace ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> gdb level8 -> disassemble на список функций </summary>
+
+```sh
+```
+---
+</details> -->
 
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
@@ -3454,6 +4223,41 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 
 <!-- ![bonus3](./README/bonus3.png) -->
 
+<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+<details><summary> ls -la </summary>
+
+```sh
+```
+---
+</details>
+<details><summary> getfacl level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> ltrace ./level8 </summary>
+
+```sh
+```
+---
+
+</details>
+<details><summary> gdb level8 -> disassemble на список функций </summary>
+
+```sh
+```
+---
+</details> -->
+
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
 <pre>
@@ -3501,3 +4305,5 @@ gcc -m32 -fno-stack-protector -Wl,-z,norelro исходник_level.c -o level
 
 Уязвимость Use-After-Free
 https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/
+
+
