@@ -5762,7 +5762,10 @@ su end
 ```sh
 bonus3@RainFall:~$ su end
 # Password: 3321b6f81659f9a71c76616f606e4b50189cecfea611393d5d649f75e157353c
-end@RainFall:~$ 
+end@RainFall:~$ cat end 
+# ||
+# \/
+# Congratulations graduate!
 ```
 
 <details> 
