@@ -20,6 +20,10 @@ level5 level6 level7 level8 level9     \
 bonu0 bonu1 bonu02 bonu3 end
 
 Скрипт для запуска образа в VirtualBox: [Vbox/setup.sh](./Vbox/setup.sh) .
+Минимальные требования для запуска:
+место на жестком диске=11 Гб
+RAM=512 Мб
+CPUS=1
 
 Полученные пароли записаны в файлы: \
 [levelX](./project)/flag,           \

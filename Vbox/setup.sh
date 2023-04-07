@@ -3,18 +3,21 @@
 ISO_IMAGE_URL="https://cdn.intra.42.fr/isos/RainFall.iso"
 ISO_IMAGE_NAME="OS_guest.iso"
 
-HD_SIZE=20000
+HD_SIZE=10000
+MEMORY=512
+CPUS=1
+WORK_FOLDER=$HOME
 
 if [[ "$OSTYPE" == "linux-gnu" ]]; then
-    WORK_FOLDER=$HOME
     mkdir -p $WORK_FOLDER/vb_mdulcie
-    MEMORY=512
-    CPUS=1
     NETWORK_INTERFACE="enp3s0f2"
 elif [[ "$OSTYPE" == "darwin"* ]]; then
-    WORK_FOLDER="/Users/mdulcie/goinfre"
-    MEMORY=4096
-    CPUS=6
+    if ls $HOME | grep goinfre ; then
+        echo present
+    else
+        mkdir $WORK_FOLDER/goinfre
+    fi
+    WORK_FOLDER+="/goinfre"
 else
     echo Oopps
     exit
